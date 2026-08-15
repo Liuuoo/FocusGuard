@@ -73,18 +73,17 @@ TapTap 等内容消费类软件会进入娱乐分类。服务先通过 Windows �
 
 当软件和网页共享的娱乐总额度耗尽后，系统会针对娱乐软件执行关闭，对浏览器中的受限娱乐标签页请求关闭。正常的学习、工作和工具页面不会因为娱乐额度耗尽而被关闭。
 
-视频演示了腾讯视频、哔哩哔哩等娱乐页面在额度到达上限后被自动关闭的过程：
+视频演示了腾讯视频、哔哩哔哩等娱乐页面在额度到达上限后被自动关闭的过程。下面的 GIF 可以直接在 GitHub 页面播放，不需要先下载：
 
-<video controls preload="metadata" width="100%">
-  <source src="docs/demo/media/limit-demo.mp4" type="video/mp4">
-  当前环境无法内嵌播放，请使用下面的链接打开视频。
-</video>
+![额度耗尽后自动关闭娱乐内容](docs/demo/media/limit-demo.gif)
 
-[打开或下载限制演示视频](docs/demo/media/limit-demo.mp4)
+如需保留声音或查看高清原始录屏，可以下载 [原始 MP4 视频](docs/demo/media/limit-demo.mp4)。
 
-### 7. 未知软件与家长复查
+### 7. 亮点 4：未知的网站或者软件
 
-AI 无法确认用途时不会强行归入娱乐，管理端会把未知软件列出来。家长可以选择娱乐、社交、学习、工作、工具等分组，保存后立即生效；也可以保持未知，未知内容默认不消耗娱乐额度。
+对于未知的网站或者软件，家长可以选择进行分类（也可以不选择，未知时无限制使用）。未知内容不会因为无法确认就直接被判定为娱乐；保持未知时，不计入娱乐额度，也不会触发自动关闭。
+
+可以结合今日活跃使用的进程进行查收。某一天活跃进程异常时，可能存在尚未识别的娱乐软件，家长可以在管理端进一步确认。
 
 ![管理端对未知软件进行手动分组](docs/demo/screenshots/13-unknown-apps.png)
 
@@ -398,6 +397,7 @@ FocusGuard 默认每秒采样一次 Windows 顶层窗口：
     install-startup-admin.ps1        管理员安装开机任务
     install-browser-force.ps1        管理员安装浏览器强制策略
     docs/demo/screenshots/           真实使用截图
-    docs/demo/media/limit-demo.mp4   达到额度后的限制演示视频
+    docs/demo/media/limit-demo.gif   GitHub 页面直接播放的限制演示
+    docs/demo/media/limit-demo.mp4   带声音的高清原始录屏
     data/                            运行时生成，不提交
     logs/                            运行时生成，不提交

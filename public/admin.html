@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FocusGuard 管理</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>FocusGuard 管理</h1>
+        <p id="statusText">正在连接本地监控服务</p>
+      </div>
+      <button id="refreshBtn" title="刷新">刷新</button>
+    </header>
+
+    <section id="authPanel" class="panel">
+      <h2 id="authTitle">设置管理密码</h2>
+      <div class="row">
+        <input id="passwordInput" type="password" autocomplete="current-password" placeholder="管理密码">
+        <button id="authBtn">继续</button>
+      </div>
+      <p class="hint">管理密码用于进入设置、修改规则，以及从界面退出监控。</p>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="grid statsGrid">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>今日活跃使用</h2>
+            <span id="todayLabel"></span>
+          </div>
+          <div id="activeSummaryList" class="summary"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>今日后台运行</h2>
+            <span id="runningCount">0 个进程</span>
+          </div>
+          <div id="runningSummaryList" class="summary"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>今日娱乐使用</h2>
+            <span id="browserEntertainmentLabel">娱乐总计 0 分钟</span>
+          </div>
+          <div id="browserSummaryList" class="summary"></div>
+        </section>
+      </div>
+
+      <div class="grid">
+        <section class="panel">
+          <div class="panelHeader">
+            <h2>当前前台窗口</h2>
+            <span id="monitorBadge">运行中</span>
+          </div>
+          <dl class="current">
+            <dt>应用</dt><dd id="currentApp">-</dd>
+            <dt>标题</dt><dd id="currentTitle">-</dd>
+          </dl>
+        </section>
+
+        <section class="panel">
+          <h2>每日娱乐总额度</h2>
+          <p class="hint">软件和浏览器标签页共用这个额度。DeepSeek 会评估软件和网页用途，娱乐、社交都会计入。</p>
+          <label>工作日总额度（分钟）</label>
+          <input id="entertainmentWeekdayLimit" type="number" min="0" step="1">
+          <label>非工作日总额度（分钟）</label>
+          <input id="entertainmentWeekendLimit" type="number" min="0" step="1">
+          <label>DeepSeek 模型</label>
+          <input id="aiModel" type="text" spellcheck="false">
+          <label class="checkRow">
+            <input id="aiEnabled" type="checkbox">
+            <span>启用 AI 分类</span>
+          </label>
+          <div class="actions">
+            <button id="saveBrowserLimitBtn">保存总额度</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>白名单</h2>
+          <label>不计入活跃和后台统计的软件</label>
+          <textarea id="appWhitelist" spellcheck="false"></textarea>
+          <label>仅不计入后台运行统计的软件</label>
+          <textarea id="runningAppWhitelist" spellcheck="false"></textarea>
+          <label>浏览器程序</label>
+          <textarea id="browserApps" spellcheck="false"></textarea>
+          <label>不计入活跃统计的浏览器标题关键词</label>
+          <textarea id="browserTitleWhitelist" spellcheck="false" placeholder="例如：公司后台&#10;学习平台"></textarea>
+          <div class="actions">
+            <button id="saveConfigBtn">保存规则</button>
+            <button id="shutdownBtn" class="danger">退出监控</button>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

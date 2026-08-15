@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FocusGuard</title>
+    <link rel="stylesheet" href="/styles.css?v=20260815-3">
+</head>
+<body>
+  <main class="shell childShell">
+    <header class="topbar">
+      <div>
+        <h1>FocusGuard</h1>
+        <p id="childStatus">正在读取今日状态</p>
+      </div>
+      <button id="childRefreshBtn" title="刷新">刷新</button>
+    </header>
+
+    <section class="childHero">
+      <div class="childHeroHeader">
+        <h2 id="remainingText">今日娱乐剩余时间</h2>
+        <span id="childDayType">-</span>
+      </div>
+      <div class="childTimeValue">
+        <strong id="remainingValue">-</strong>
+        <span id="remainingRatio">剩余 0%</span>
+      </div>
+      <div id="childUsageBar" class="childUsageBar" role="progressbar" aria-label="今日娱乐额度使用进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <span></span>
+      </div>
+      <div class="childTimeMeta">
+        <span id="childUsedLabel">已用 0 分钟</span>
+        <span id="childLimitLabel">总额度 0 分钟</span>
+      </div>
+      <p id="remainingHint">娱乐软件和娱乐网页会共用这个额度。</p>
+    </section>
+
+    <section class="panel livePanel">
+      <div class="panelHeader">
+        <h2>实时计时</h2>
+        <span id="liveUpdatedText">-</span>
+      </div>
+      <div class="liveTabs" role="tablist" aria-label="实时计时状态">
+        <button class="liveTab active" type="button" role="tab" aria-selected="true" aria-controls="liveWindowList" data-live-tab="active_counted">
+          正在使用 · 计入总时长 <span id="liveCountActiveCounted">0</span>
+        </button>
+        <button class="liveTab" type="button" role="tab" aria-selected="false" aria-controls="liveWindowList" data-live-tab="active_excluded">
+          正在使用 · 不计入总时长 <span id="liveCountActiveExcluded">0</span>
+        </button>
+        <button class="liveTab" type="button" role="tab" aria-selected="false" aria-controls="liveWindowList" data-live-tab="background">
+          处于后台 <span id="liveCountBackground">0</span>
+        </button>
+        <button class="liveTab" type="button" role="tab" aria-selected="false" aria-controls="liveWindowList" data-live-tab="minimized">
+          已最小化 <span id="liveCountMinimized">0</span>
+        </button>
+        <button class="liveTab" type="button" role="tab" aria-selected="false" aria-controls="liveWindowList" data-live-tab="covered">
+          被遮挡 <span id="liveCountCovered">0</span>
+        </button>
+        <button class="liveTab" type="button" role="tab" aria-selected="false" aria-controls="liveWindowList" data-live-tab="unavailable">
+          暂未采样 <span id="liveCountUnavailable">0</span>
+        </button>
+      </div>
+      <div id="liveWindowList" class="liveList" role="tabpanel" aria-live="polite"></div>
+    </section>
+
+    <section class="childUsage">
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>今日娱乐使用</h2>
+          <span id="browserLimitText">-</span>
+        </div>
+        <div id="childBrowserList" class="summary"></div>
+      </section>
+
+    </section>
+  </main>
+    <script src="/child.js?v=20260815-2"></script>
+</body>
+</html>

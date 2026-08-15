@@ -1,0 +1,22 @@
+# Local runtime state and personal usage history
+data/
+logs/
+
+# Extension signing material and packaged artifacts
+*.pem
+*.crx
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Node.js and editor files
+node_modules/
+npm-debug.log*
+.vscode/
+.idea/
+
+# Windows/macOS metadata
+Thumbs.db
+.DS_Store

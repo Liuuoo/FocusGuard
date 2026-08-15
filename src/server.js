@@ -12,6 +12,9 @@ const BROWSER_EXTENSION_DIR = path.join(DATA_DIR, "browser-extension");
 const BROWSER_EXTENSION_METADATA_PATH = path.join(BROWSER_EXTENSION_DIR, "metadata.json");
 const PORT = Number(process.env.FOCUSGUARD_PORT || 37831);
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
+const DEFAULT_AI_MODEL = "deepseek-v4-pro";
+const ADMIN_SUMMARY_MINUTES = 3;
+const ADMIN_SUMMARY_MIN_MS = ADMIN_SUMMARY_MINUTES * 60 * 1000;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -112,7 +115,7 @@ const defaultDb = {
     browserTitleWhitelist: [],
     aiClassification: {
       enabled: true,
-      model: "deepseek-v4-flash"
+      model: DEFAULT_AI_MODEL
     },
     entertainmentLimits: {
       weekdayMinutes: 60,
@@ -171,6 +174,14 @@ function loadDb() {
       || defaultDb.config.entertainmentLimits;
     mergedConfig.entertainmentLimits = normalizeEntertainmentLimits(storedEntertainmentLimits);
     mergedConfig.browserEntertainmentLimits = clone(mergedConfig.entertainmentLimits);
+    mergedConfig.aiClassification = {
+      ...clone(defaultDb).config.aiClassification,
+      ...(stored.config?.aiClassification || {})
+    };
+    if (!mergedConfig.aiClassification.model
+      || normalizePattern(mergedConfig.aiClassification.model) === "deepseek-v4-flash") {
+      mergedConfig.aiClassification.model = DEFAULT_AI_MODEL;
+    }
     delete mergedConfig.appLimits;
     mergedConfig.runningAppWhitelist = Array.from(new Set([
       ...clone(defaultDb).config.runningAppWhitelist,
@@ -338,7 +349,7 @@ function getAppClassification(activity) {
 async function aiClassifyApp(activity) {
   const fallback = heuristicClassifyApp(activity);
   const key = deepSeekApiKey();
-  const model = db.config.aiClassification?.model || "deepseek-v4-flash";
+  const model = db.config.aiClassification?.model || DEFAULT_AI_MODEL;
   if (!key || !db.config.aiClassification?.enabled) return fallback;
 
   const prompt = [
@@ -1376,6 +1387,10 @@ function entertainmentRows(day = todayKey(), now = Date.now()) {
     .sort((a, b) => b.ms - a.ms);
 }
 
+function filterAdminSummaryRows(rows) {
+  return rows.filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
+}
+
 function browserDisplayName(exe) {
   const names = {
     "msedge.exe": "Microsoft Edge",
@@ -1581,7 +1596,7 @@ function heuristicClassify(url, title) {
 
 async function aiClassifyPage(url, title) {
   const key = deepSeekApiKey();
-  const model = db.config.aiClassification?.model || "deepseek-v4-flash";
+  const model = db.config.aiClassification?.model || DEFAULT_AI_MODEL;
   if (!key || !db.config.aiClassification?.enabled) return heuristicClassify(url, title);
 
   const prompt = [
@@ -1906,19 +1921,20 @@ async function route(req, res) {
     const day = url.searchParams.get("day") || todayKey();
     return sendJson(res, 200, {
       day,
-      activeRows: activeSummary(day),
+      activeRows: filterAdminSummaryRows(activeSummary(day)),
       runningRows: runningSummary(day),
       nativeBrowserWindowMonitoring: nativeBrowserTrackingActive(),
       visibleBrowserWindowCount: visibleBrowserWindowCount(),
       browserRows: Object.entries(browserDayTotals(day))
         .map(([hostname, value]) => ({ hostname, ...value, ms: Math.round(value.ms || 0) }))
         .sort((a, b) => b.ms - a.ms),
-      appEntertainmentRows: appEntertainmentRows(day),
-      entertainmentRows: entertainmentRows(day),
+      appEntertainmentRows: filterAdminSummaryRows(appEntertainmentRows(day)),
+      entertainmentRows: filterAdminSummaryRows(entertainmentRows(day)),
       browserEntertainmentMs: Math.round(getBrowserEntertainmentMs(day)),
       browserEntertainmentLimitMinutes: entertainmentLimitMinutes(),
       entertainmentTotalMs: Math.round(getUnifiedEntertainmentMs(day)),
       entertainmentLimitMinutes: entertainmentLimitMinutes(),
+      minimumDisplayMinutes: ADMIN_SUMMARY_MINUTES,
       entertainmentLimitMs: entertainmentLimitMinutes() * 60 * 1000
     });
   }
@@ -1983,7 +1999,7 @@ async function route(req, res) {
       if (body.aiClassification && typeof body.aiClassification === "object") {
         db.config.aiClassification = {
           enabled: Boolean(body.aiClassification.enabled),
-          model: String(body.aiClassification.model || "deepseek-v4-flash")
+          model: DEFAULT_AI_MODEL
         };
       }
       saveDb();

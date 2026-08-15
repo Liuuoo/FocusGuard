@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FocusGuard 管理</title>
-  <link rel="stylesheet" href="/styles.css?v=20260815-3">
+  <link rel="stylesheet" href="/styles.css?v=20260815-4">
 </head>
 <body>
   <main class="shell">
@@ -30,23 +30,15 @@
         <section class="panel">
           <div class="panelHeader">
             <h2>今日活跃使用</h2>
-            <span id="todayLabel"></span>
+            <span id="todayLabel">前台累计 ≥3 分钟</span>
           </div>
           <div id="activeSummaryList" class="summary"></div>
         </section>
 
         <section class="panel">
           <div class="panelHeader">
-            <h2>今日后台运行</h2>
-            <span id="runningCount">0 个进程</span>
-          </div>
-          <div id="runningSummaryList" class="summary"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panelHeader">
             <h2>今日娱乐使用</h2>
-            <span id="browserEntertainmentLabel">娱乐总计 0 分钟</span>
+            <span id="browserEntertainmentLabel">前台累计 ≥3 分钟</span>
           </div>
           <div id="browserSummaryList" class="summary"></div>
         </section>
@@ -72,34 +64,22 @@
           <label>非工作日总额度（分钟）</label>
           <input id="entertainmentWeekendLimit" type="number" min="0" step="1">
           <label>DeepSeek 模型</label>
-          <input id="aiModel" type="text" spellcheck="false">
+          <input id="aiModel" type="text" value="deepseek-v4-pro" readonly spellcheck="false">
           <label class="checkRow">
             <input id="aiEnabled" type="checkbox">
             <span>启用 AI 分类</span>
           </label>
           <div class="actions">
-            <button id="saveBrowserLimitBtn">保存总额度</button>
+            <button id="saveConfigBtn">保存使用时间</button>
+            <span id="saveFeedback" class="saveFeedback" role="status" aria-live="polite"></span>
           </div>
-        </section>
-
-        <section class="panel">
-          <h2>白名单</h2>
-          <label>不计入活跃和后台统计的软件</label>
-          <textarea id="appWhitelist" spellcheck="false"></textarea>
-          <label>仅不计入后台运行统计的软件</label>
-          <textarea id="runningAppWhitelist" spellcheck="false"></textarea>
-          <label>浏览器程序</label>
-          <textarea id="browserApps" spellcheck="false"></textarea>
-          <label>不计入活跃统计的浏览器标题关键词</label>
-          <textarea id="browserTitleWhitelist" spellcheck="false" placeholder="例如：公司后台&#10;学习平台"></textarea>
           <div class="actions">
-            <button id="saveConfigBtn">保存规则</button>
             <button id="shutdownBtn" class="danger">退出监控</button>
           </div>
         </section>
       </div>
     </section>
   </main>
-  <script src="/app.js?v=20260815-2"></script>
+  <script src="/app.js?v=20260815-3"></script>
 </body>
 </html>

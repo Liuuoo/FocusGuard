@@ -435,8 +435,21 @@ dd {
 
 .actions {
   display: flex;
+  align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.saveFeedback {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-dark);
+  font-weight: 650;
+}
+
+.saveFeedback.error {
+  color: var(--danger);
 }
 
 .checkRow {

@@ -5,6 +5,8 @@ const state = {
   authed: false,
   configLoaded: false
 };
+const ADMIN_SUMMARY_MIN_MS = 3 * 60 * 1000;
+const DEFAULT_AI_MODEL = "deepseek-v4-pro";
 
 function formatMs(ms) {
   const minutes = Math.round(ms / 60000);
@@ -25,14 +27,6 @@ async function api(path, options = {}) {
   return data;
 }
 
-function linesToArray(value) {
-  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-}
-
-function arrayToLines(value) {
-  return (value || []).join("\n");
-}
-
 async function refreshStatus() {
   const status = await api("/api/status");
   state.configured = status.configured;
@@ -41,8 +35,7 @@ async function refreshStatus() {
     ? `本地监控服务正在运行；上次关闭失败：${status.lastLimitError}`
     : status.monitoring ? "本地监控服务正在运行" : "监控服务未完全运行";
   $("monitorBadge").textContent = status.monitoring ? "运行中" : "部分运行";
-  $("todayLabel").textContent = status.today;
-  $("runningCount").textContent = `${status.runningCount || 0} 个进程`;
+  $("todayLabel").textContent = status.today + " · 前台累计 ≥3 分钟";
   if (!status.deepSeekConfigured && state.authed) {
     $("statusText").textContent += "；DeepSeek key 尚未配置";
   }
@@ -105,12 +98,16 @@ function categoryToChinese(category) {
 function renderBrowserSummary(data) {
   const list = $("browserSummaryList");
   const rows = data.entertainmentRows || [];
-  $("browserEntertainmentLabel").textContent = `娱乐总计 ${formatMs(data.entertainmentTotalMs || 0)} / ${data.entertainmentLimitMinutes || 0} 分钟`;
+  $("browserEntertainmentLabel").textContent = "前台累计 ≥3 分钟 · 娱乐总计 "
+    + formatMs(data.entertainmentTotalMs || 0)
+    + " / "
+    + (data.entertainmentLimitMinutes || 0)
+    + " 分钟";
   list.innerHTML = "";
   if (!rows.length) {
     const empty = document.createElement("p");
     empty.className = "empty";
-    empty.textContent = "今天还没有娱乐软件或网页记录。";
+    empty.textContent = "今天还没有达到 3 分钟的前台娱乐记录。";
     list.appendChild(empty);
     return;
   }
@@ -131,22 +128,19 @@ function renderBrowserSummary(data) {
 
 async function loadSummaries() {
   const data = await api("/api/summaries");
-  renderSummary($("activeSummaryList"), data.activeRows, "今天还没有活跃使用记录。");
-  renderSummary($("runningSummaryList"), data.runningRows, "今天还没有后台运行记录。");
-  renderBrowserSummary(data);
+  const activeRows = (data.activeRows || []).filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
+  const entertainmentRows = (data.entertainmentRows || []).filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
+  renderSummary($("activeSummaryList"), activeRows, "今天还没有达到 3 分钟的前台活跃记录。");
+  renderBrowserSummary({ ...data, entertainmentRows });
 }
 
 async function loadConfig() {
   const config = await api("/api/config");
-  $("appWhitelist").value = arrayToLines(config.appWhitelist);
-  $("runningAppWhitelist").value = arrayToLines(config.runningAppWhitelist);
-  $("browserApps").value = arrayToLines(config.browserApps);
-  $("browserTitleWhitelist").value = arrayToLines(config.browserTitleWhitelist);
- const entertainmentLimits = config.entertainmentLimits || config.browserEntertainmentLimits || {};
+  const entertainmentLimits = config.entertainmentLimits || config.browserEntertainmentLimits || {};
   $("entertainmentWeekdayLimit").value = entertainmentLimits.weekdayMinutes ?? 60;
   $("entertainmentWeekendLimit").value = entertainmentLimits.weekendMinutes ?? 120;
   $("aiEnabled").checked = Boolean(config.aiClassification?.enabled);
-  $("aiModel").value = config.aiClassification?.model || "deepseek-v4-flash";
+  $("aiModel").value = config.aiClassification?.model || DEFAULT_AI_MODEL;
   state.configLoaded = true;
 }
 
@@ -167,28 +161,29 @@ async function handleAuth() {
 }
 
 async function saveConfig() {
+  const feedback = $("saveFeedback");
+  feedback.textContent = "";
+  feedback.classList.remove("error");
   try {
     await api("/api/config", {
       method: "POST",
       body: JSON.stringify({
-        appWhitelist: linesToArray($("appWhitelist").value),
-        runningAppWhitelist: linesToArray($("runningAppWhitelist").value),
-        browserApps: linesToArray($("browserApps").value),
-        browserTitleWhitelist: linesToArray($("browserTitleWhitelist").value),
         entertainmentLimits: {
           weekdayMinutes: Number($("entertainmentWeekdayLimit").value || 0),
           weekendMinutes: Number($("entertainmentWeekendLimit").value || 0)
         },
         aiClassification: {
           enabled: $("aiEnabled").checked,
-          model: $("aiModel").value.trim() || "deepseek-v4-flash"
+          model: DEFAULT_AI_MODEL
         }
       })
     });
     state.configLoaded = false;
     await refreshStatus();
+    feedback.textContent = "设置成功";
   } catch (error) {
-    alert(error.message);
+    feedback.textContent = error.message;
+    feedback.classList.add("error");
   }
 }
 
@@ -209,7 +204,6 @@ $("passwordInput").addEventListener("keydown", (event) => {
 });
 $("refreshBtn").addEventListener("click", refreshStatus);
 $("saveConfigBtn").addEventListener("click", saveConfig);
-$("saveBrowserLimitBtn").addEventListener("click", saveConfig);
 $("shutdownBtn").addEventListener("click", shutdown);
 
 refreshStatus().catch((error) => {

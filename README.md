@@ -1,568 +1,403 @@
-# FocusGuard
+# 健康使用电脑（FocusGuard）
 
-FocusGuard 是一款面向 Windows 的本地家长控制与专注管理工具。它通过原生窗口采样和浏览器扩展识别应用、浏览器窗口及网页标签页的使用情况，再使用 DeepSeek 对软件和网页用途进行分类。
+一个运行在 Windows 本机上的家长控制与专注管理工具。
 
-FocusGuard 提供儿童查看页和密码保护的管理页，支持工作日/休息日分别设置娱乐总额度。周六日以及管理页配置的寒假、暑假日期都按休息日处理。娱乐软件、娱乐网页和社交内容共用同一额度，达到上限后可以自动关闭受限软件或浏览器标签页。
+它会持续观察当前可见的应用窗口、Edge/Chrome 浏览器窗口和浏览器标签页，并使用 DeepSeek 判断软件或网页的用途。娱乐软件、娱乐网页和社交内容共用每日额度；达到额度后，只关闭被判定为娱乐或社交的目标，学习、办公和工具内容不受影响。
 
-> 本项目适用于你拥有或负责管理的 Windows 设备。它不是不可绕过的系统安全边界：拥有 Windows 管理员权限的人可以停止服务、修改计划任务、删除策略或卸载程序。
+> 本项目适用于你拥有或负责管理的 Windows 设备。它不是不可绕过的系统安全边界。拥有 Windows 管理员权限的人仍然可以停止服务、修改计划任务、删除浏览器策略或卸载程序。
+
+## 真实使用演示
+
+以下素材来自一次真实运行记录，按“打开内容、识别用途、判断可见状态、达到额度后限制、家长复查”的顺序整理。截图拍摄时页面仍显示旧名称 FocusGuard 和“非工作日”；当前版本的儿童端名称已经改为“健康使用电脑”，对应标签改为“休息日”，核心流程保持一致。
+
+### 1. 儿童端与管理端
+
+儿童端显示当日娱乐剩余时间、已用额度、实时窗口状态和娱乐明细。管理端需要密码进入，可以查看活跃使用、娱乐使用、当前窗口并修改额度。
+
+![儿童端额度与实时状态](docs/demo/screenshots/01-child-dashboard.png)
+
+![管理端活跃使用、娱乐使用和额度设置](docs/demo/screenshots/02-admin-dashboard.png)
+
+### 2. 浏览器网页用途识别
+
+打开 4399 等游戏页面时，页面会被归入娱乐；打开洛谷题目列表或 OI Wiki 等编程学习资料时，会被归入学习，不消耗娱乐总额度。网页识别依赖浏览器扩展上报的 URL、标题和标签页状态；扩展不可用时，原生窗口监控仍可工作，但后台标签页只能使用标题兜底。
+
+![前台娱乐网站：4399 在线玩](docs/demo/screenshots/03-entertainment-website.png)
+
+![前台学习网站：洛谷题目列表](docs/demo/screenshots/04-learning-website.png)
+
+![学习资料页面：OI Wiki](docs/demo/screenshots/05-learning-site-detail.png)
+
+### 3. 软件用途识别
+
+TapTap 等内容消费类软件会进入娱乐分类。服务先通过 Windows 进程采样获得进程名、窗口标题等信息，再将必要的用途信息交给 DeepSeek；结果会在本地缓存，重复出现的软件不会每秒重复请求 AI。
+
+![TapTap 被识别为娱乐软件并计入额度](docs/demo/screenshots/06-entertainment-app.png)
+
+![软件和窗口状态在实时计时列表中显示](docs/demo/screenshots/07-ai-app-classification.png)
+
+内容制作、办公、开发、学习和系统工具不因为“可以制作娱乐内容”就自动被判为娱乐。例如 OBS 应归为工具；无法确认的新软件会保留为未知，交由家长手动分组。
+
+### 4. 前台、可见比例与后台
+
+计时不只看“哪个窗口获得焦点”，而是采样窗口在屏幕上的实际可见区域。两个窗口并排显示时，两个窗口都可以计时；窗口完全被遮挡、最小化或处于后台时停止计时，避免把忘记关闭的后台页面算成使用时间。
+
+![娱乐窗口与其他窗口同时显示时按可见比例采样](docs/demo/screenshots/08-visible-window-sampling.png)
+
+![窗口被覆盖后进入不计时状态](docs/demo/screenshots/09-covered-window.png)
+
+![TapTap 完全被其他窗口覆盖时不计时](docs/demo/screenshots/10-covered-taptap.png)
+
+儿童端会把实时窗口分成以下状态：
+
+| 状态 | 计入娱乐总额度 | 说明 |
+| --- | --- | --- |
+| 正在使用 · 计入总时长 | 是 | 窗口有可见区域，且用途是娱乐或社交 |
+| 正在使用 · 不计入总时长 | 否 | 窗口有可见区域，但用途是工具、工作或学习 |
+| 处于后台 | 否 | 进程仍在运行，但不作为当前可见窗口处理 |
+| 已最小化 | 否 | 窗口已最小化 |
+| 被遮挡 | 否 | 窗口可见面积为零或低于有效阈值 |
+| 暂未采样 | 否 | Windows 暂时无法取得可靠的窗口状态 |
+
+“正在使用 · 计入总时长”会使用橙色背景突出显示。管理端的“今日活跃使用”和“今日娱乐使用”只展示前台/可见累计达到 3 分钟的记录。
+
+### 5. 隐藏运行与开机自启
+
+程序可以作为隐藏的 Windows 计划任务启动，不创建托盘图标，也不在桌面放置快捷方式。项目路径可以放在指定的本地目录中；隐藏运行不会改变管理员密码和 Windows 权限边界。
+
+![隐藏运行与开机自启的使用说明记录](docs/demo/screenshots/11-hidden-startup.png)
+
+![任务管理器中的应用和后台进程](docs/demo/screenshots/12-background-processes.png)
+
+### 6. 达到额度后的限制
+
+当软件和网页共享的娱乐总额度耗尽后，系统会针对娱乐软件执行关闭，对浏览器中的受限娱乐标签页请求关闭。正常的学习、工作和工具页面不会因为娱乐额度耗尽而被关闭。
+
+视频演示了腾讯视频、哔哩哔哩等娱乐页面在额度到达上限后被自动关闭的过程：
+
+<video controls preload="metadata" width="100%">
+  <source src="docs/demo/media/limit-demo.mp4" type="video/mp4">
+  当前环境无法内嵌播放，请使用下面的链接打开视频。
+</video>
+
+[打开或下载限制演示视频](docs/demo/media/limit-demo.mp4)
+
+### 7. 未知软件与家长复查
+
+AI 无法确认用途时不会强行归入娱乐，管理端会把未知软件列出来。家长可以选择娱乐、社交、学习、工作、工具等分组，保存后立即生效；也可以保持未知，未知内容默认不消耗娱乐额度。
+
+![管理端对未知软件进行手动分组](docs/demo/screenshots/13-unknown-apps.png)
+
+![管理端复查当天活跃进程和娱乐使用](docs/demo/screenshots/14-active-summary.png)
 
 ## 功能概览
 
-- 本地网页界面，不创建托盘图标
-- 儿童查看页：剩余时间、今日娱乐使用、实时窗口状态
-- 管理页：密码登录、前台使用摘要、额度、AI 和退出监控
-- 按应用可执行文件、窗口标题和浏览器网页内容进行分类
-- 娱乐和社交内容共用每日总额度
-- 工作日和休息日使用不同额度，寒暑假日期可配置
-- Edge/Chrome 浏览器扩展上报每个浏览器窗口的活动标签页
-- Windows 原生窗口采样识别最小化、遮挡、并排可见和多窗口
-- 常见其他浏览器进程阻止
-- 可选的 Edge/Chrome 企业策略强制安装扩展
-- 支持管理员权限开机启动
+- 儿童查看页：剩余时间、额度进度、实时窗口状态和娱乐明细
+- 密码保护的管理端：额度、AI、未知软件分类和退出监控
+- 软件、窗口和浏览器标签页统一计入一份娱乐总额度
+- DeepSeek Pro 模型评估软件与网页用途
+- 周六日自动作为休息日，寒假和暑假日期可配置为休息日
+- 原生 Windows 窗口采样，不依赖窗口焦点才能识别
+- 识别前台、并排可见、部分可见、被遮挡、最小化和后台状态
+- Edge/Chrome 扩展上报活动标签页；扩展缺失时保留原生窗口兜底
+- 可选安装 Edge/Chrome 企业策略，降低扩展被删除或禁用的绕过风险
+- 常见其他浏览器进程阻止和浏览器安装包隔离
+- 隐藏计划任务开机自启，不创建托盘图标
 
-## 截图与真实使用链路
+## 计时与分类规则
 
-下面的截图来自一次实际运行链路，不是用设计图拼出的静态示例。演示时打开了娱乐网页和学习网页作为对比输入，并把一个实际运行的 Edge 娱乐窗口切到前台，让 FocusGuard 根据原生窗口可见面积和网页分类实时更新儿童端。
+### 可见面积计时
 
-### 1. 准备不同用途的页面
-
-演示输入使用了一个娱乐页面和一个学习页面。实际部署时可以换成任意网站；网页是否计入额度由本地规则和 DeepSeek 分类共同决定。
-
-![演示用娱乐页面](docs/screenshots/demo-entertainment-page.png)
-
-![演示用学习页面](docs/screenshots/demo-work-page.png)
-
-### 2. 儿童端看到前台娱乐窗口
-
-儿童端首页先展示当天的额度进度和娱乐明细，软件与网页会出现在同一份使用列表中。
-
-![儿童端今日额度总览](docs/screenshots/child-overview.png)
-
-当 Edge 娱乐窗口处于前台且有约 90% 的窗口区域可见时，它会进入“正在使用 · 计入总时长”，整行使用橙色背景突出。下面的 4 分钟、25 分钟和窗口标题都是运行时快照，换一天运行不会固定显示这些数值。
-
-![儿童端前台娱乐窗口计时](docs/screenshots/child-active-counted.png)
-
-### 3. 工具窗口可见，但不消耗娱乐额度
-
-工具、办公和学习内容仍然可以显示为“正在使用”，但不会增加娱乐总时长。这样可以避免把工作页面误算成娱乐时间，同时仍能在儿童端解释当前有哪些窗口可见。
-
-![儿童端可见但不计入总时长](docs/screenshots/child-active-excluded.png)
-
-### 4. 窗口不可见时停止计时
-
-后台、最小化和被其他窗口完全遮挡是不同状态。它们都不会继续消耗娱乐额度，但儿童端会分开列出原因，方便判断是忘记关闭、窗口被压到后面，还是确实处于后台。
-
-![儿童端最小化窗口](docs/screenshots/child-minimized.png)
-
-![儿童端被遮挡窗口](docs/screenshots/child-covered.png)
-
-![儿童端后台状态](docs/screenshots/child-background.png)
-
-### 5. 管理端先经过密码入口
-
-管理端的设置、规则和退出监控操作都需要管理密码。密码不会出现在截图、README 或仓库中；首次部署时在这个页面设置，之后使用同一密码登录。
-
-![管理端密码入口](docs/screenshots/admin-login.png)
-
-截图文件只用于文档示例。实际显示内容会随当前打开的窗口、AI 分类结果、窗口布局和每日额度变化；截图中出现的娱乐软件和网页名称不代表项目内置固定限制名单。
-
-## 计时规则
-
-### 窗口可见面积
-
-FocusGuard 默认每秒采样一次 Windows 顶层窗口，并根据窗口在屏幕上的实际可见面积计算计时比例：
+FocusGuard 默认每秒采样一次 Windows 顶层窗口：
 
 - 完全可见：按 100% 计时
 - 两个窗口并排各占一半：各按约 50% 计时
-- 窗口只有一部分可见：按可见比例计时
-- 被其他窗口完全遮挡：不计时
-- 最小化：不计时
-- 不同虚拟桌面或系统暂时无法采样：不计时或显示“暂未采样”
+- 只露出一部分：按有效可见比例计时
+- 完全被覆盖：停止计时
+- 最小化：停止计时
+- 处于其他虚拟桌面或暂时无法采样：停止计时并显示暂未采样
 
-因此，一个没有获得系统焦点但仍然实际显示在屏幕上的 TapTap 窗口，仍然可以计入时间；一个放在后面且完全看不见的窗口不会因为忘记关闭而继续计时。
+因此，窗口没有获得系统焦点但仍然显示在屏幕上时，可以计入时间；放到后面完全看不见的窗口不会因为忘记关闭而继续获得额度。
 
-### 实时状态
+### 娱乐总额度
 
-儿童端的“实时计时”会将窗口分为以下状态：
-
-| 状态 | 含义 |
-| --- | --- |
-| 正在使用 · 计入总时长 | 当前可见，并且软件/网页被归类为娱乐或社交，会消耗每日娱乐额度 |
-| 正在使用 · 不计入总时长 | 当前可见，但属于工具、工作、学习等非娱乐内容，仍显示为使用中但不消耗娱乐额度 |
-| 处于后台 | 当前不作为可计时窗口处理 |
-| 已最小化 | 窗口最小化，不计时 |
-| 被遮挡 | 可见面积为零或过小，不计时 |
-| 暂未采样 | 原生窗口采样暂时不可用 |
-
-“正在使用 · 计入总时长”的窗口会用橙色背景突出显示。
-
-### 后台运行时间和娱乐时间
-
-项目中有两种不同统计：
-
-1. **活跃使用时间**：窗口实际可见时间，按可见比例计算。
-2. **后台运行时间**：进程仍在运行但没有作为活跃窗口计时的时间。
-
-后台运行时间用于观察进程情况，不会自动计入娱乐总额度。娱乐额度只由被分类为 `entertainment` 或 `social` 的软件和网页消耗。
-
-后台进程采样仍用于系统级监控和限制动作，但不再显示在管理端摘要中。
-
-### 管理端摘要显示
-
-管理端只展示前台/可见累计使用时间不少于 3 分钟的记录：
-
-- “今日活跃使用”只显示前台或可见窗口累计达到 3 分钟的软件。
-- “今日娱乐使用”只显示前台或可见累计达到 3 分钟、并被判定为娱乐或社交的软件和网页。
-- 后台进程统计不在管理端显示；儿童端的实时状态仍会区分后台、最小化和被遮挡。
-
-## AI 分类
-
-软件和浏览器网页可以交给 DeepSeek 分类。可用分类包括：
-
-- `entertainment`：游戏、视频、短视频、直播和娱乐内容
-- `social`：社交、聊天、社区和信息流内容
-- `work`：办公和工作
-- `study`：学习、课程和文档
-- `shopping`：购物
-- `news`：新闻
-- `tool`：工具、开发和系统工具
-- `unknown`：无法确定
-
-只有 `entertainment` 和 `social` 会计入每日娱乐总额度。
-
-分类流程如下：
-
-1. 先使用本地规则识别明显的娱乐内容。
-2. 其他内容调用 DeepSeek 模型。
-3. 分类结果在本地缓存约 7 天，减少重复请求。
-4. AI 请求失败、未配置 key 或 AI 被关闭时，使用本地规则兜底。
-
-AI 不是绝对准确的内容审核器。新软件、新网页、搜索结果和标题不完整的窗口可能被判为 `unknown`，应结合儿童端实时状态和管理端摘要观察结果。
-
-## 限制行为
-
-### 每日娱乐总额度
-
-管理页中的工作日和休息日额度作用于软件和网页的统一总时间。例如：
+软件、浏览器标签页和社交内容共用同一个每日总额度。例如：
 
 - TapTap 使用 30 分钟
 - 抖音网页使用 20 分钟
 - 其他社交软件使用 10 分钟
 
-统一娱乐总时长就是 60 分钟，而不是每个软件分别拥有 60 分钟。
+当天统一娱乐使用量为 60 分钟，而不是每个软件分别拥有一份额度。
 
-周六日自动使用休息日额度。寒假和暑假时间因地区、学校和年份不同，不在程序中硬编码；家长应在管理页填写对应的开始和结束日期。填写后的日期范围即使落在周一至周五，也会使用休息日额度。寒假可以填写跨年范围，例如 `2026-12-25` 到 `2027-02-15`。
+只有 entertainment 和 social 会消耗额度。工具、工作、学习、新闻、购物和未知分类默认不消耗娱乐额度。
 
-达到额度后：
+### 工作日、周末与寒暑假
 
-- 被分类为娱乐的软件会通过 Windows `taskkill` 强制关闭进程及其子进程
-- 浏览器扩展会在上报受限娱乐标签页时请求关闭该标签页
-- 非娱乐窗口，例如 Codex、FocusGuard 页面、办公软件和学习软件不会被关闭
-- 软件关闭失败时，管理页会显示最近一次失败原因；目标软件以管理员权限运行时，FocusGuard 也必须以管理员权限运行
+管理端现在使用“工作日额度”和“休息日额度”：
 
-限制动作有约 30 秒的冷却时间，避免同一进程被连续重复执行关闭操作。
+- 周六、周日自动使用休息日额度
+- 寒假、暑假日期需要家长在管理端填写开始和结束日期
+- 填写的日期范围包含首尾两天，即使是周一至周五也使用休息日额度
+- 寒假支持跨年，例如 2026-12-25 到 2027-02-15
+- 日期留空表示不启用对应假期范围
+- 日期无效、只填一端或开始日期晚于结束日期时，保存会被拒绝
 
-### 内置过滤与 AI 分类
+程序不硬编码某个城市或学校的放假时间，因为中国不同地区、学校和年份的寒暑假日期可能不同。
 
-管理端不再提供软件白名单、后台进程名单、浏览器程序名单或浏览器标题关键词编辑框。Windows 系统进程过滤和浏览器识别仍由程序内部维护，避免管理页面出现大量需要手工维护的列表。
+### AI 分类
 
-软件和网页用途统一交给 DeepSeek 评估。娱乐和社交内容计入统一娱乐额度，工具、工作和学习内容不计入；AI 请求失败时仍使用本地规则兜底。
+分类流程为：
 
-### 其他浏览器阻止
+1. 本地规则先识别明显的系统、工具和娱乐进程。
+2. 未确定的软件或网页交给 DeepSeek deepseek-v4-pro 评估。
+3. 资料不足时，AI 可以要求联网搜索，再结合搜索摘要进行第二次判断。
+4. 结果在本地缓存约 7 天，减少重复请求。
+5. 请求失败、未配置 key 或 AI 关闭时使用本地规则兜底。
 
-进程监控会定期检查常见浏览器可执行文件。默认阻止列表包括 Chrome、Firefox、360、2345、夸克、Opera、Brave、Vivaldi、搜狗、QQ、UC、Maxthon、Tor 等常见浏览器。
+分类不是绝对准确的内容审核。标题不完整、搜索结果不足或新发布的软件可能进入未知，家长可以在管理端手动分组。
 
-Edge 是主要受支持的浏览器，默认不会被这份“其他浏览器”阻止列表关闭。可以通过浏览器强制策略控制 Edge 扩展和下载行为。
+## 达到额度后的限制
 
-### 浏览器安装包隔离
+达到当天娱乐总额度后：
 
-浏览器防绕过脚本会检查“下载”和“桌面”等目录。识别为高置信度的其他浏览器安装包后，会移动到：
+- 娱乐软件通过 Windows taskkill 关闭进程及其子进程
+- 浏览器扩展请求关闭受限的娱乐标签页
+- 没有扩展时，原生 Edge 窗口监控可以继续识别窗口；标签页关闭能力会下降
+- 学习、工作、工具和健康使用电脑页面不会被当作娱乐目标关闭
+- 关闭动作有冷却时间，避免反复对同一进程执行操作
+- 目标程序若以更高权限运行，FocusGuard 也需要以管理员权限运行，否则 Windows 可能拒绝关闭
 
-```text
-data\quarantine\browser-installers
-```
-
-它使用隔离移动而不是直接删除，仍可能漏检重命名、压缩包、脚本安装器或未覆盖的新浏览器。
-
-### Edge 下载限制
-
-执行以下命令可以通过 Edge 企业策略禁止所有下载：
-
-```powershell
-.\install-browser-force.ps1 -BlockAllEdgeDownloads
-```
-
-不使用该参数时，普通文件下载仍然允许，但检测到的浏览器安装包仍可能被隔离。修改策略后需要重启 Edge。
-
-## 系统要求
-
-- Windows 10 或 Windows 11
-- Node.js 18 或更高版本，并且 `node.exe` 位于 PATH
-- Windows PowerShell 5.1 或更高版本
-- 设置开机自启、安装浏览器企业策略、关闭管理员权限运行的软件时，需要管理员权限
-- Edge 强制扩展功能需要已安装 Edge；Chrome 模式需要已安装 Chrome
-- DeepSeek 分类需要可用的 DeepSeek API key；没有 key 仍可以使用本地规则和窗口监控
-
-## 可移植性说明
-
-项目代码不依赖当前电脑的用户名、项目盘符或固定 Node.js 安装盘符：
-
-- 项目可以放在任意目录，例如 `C:\FocusGuard`、`D:\Tools\FocusGuard` 或用户文档目录
-- 启动脚本通过脚本自身位置定位 `src\server.js`、`data` 和 `logs`
-- Node.js 通过 PATH 中的 `node.exe` 查找；重新安装 Node.js 后只要 `node --version` 在新 PowerShell 中可用即可
-- 开机任务安装器直接使用通用启动器，不会把当前电脑的绝对路径写回仓库文件
-- 浏览器策略使用 Windows 固定的企业策略注册表位置，这是浏览器策略要求，不是本机用户名路径
-- 浏览器安装器会检查 PATH、Windows `App Paths` 注册表、`Program Files`、`Program Files (x86)` 和当前用户的 `AppData\Local`
-
-项目本身只支持 Windows。PowerShell、Win32 窗口采样、`taskkill.exe` 和 Edge/Chrome 企业策略都属于 Windows 能力，不能直接部署到 macOS 或 Linux。
-
-换电脑部署时，必须重新准备以下环境：Node.js、DeepSeek key、管理员权限、浏览器，以及新的本地 `data` 配置。GitHub 仓库不会携带原电脑的密码、使用记录、分类缓存或扩展签名私钥。
+这套机制的目标是提高限制成本，而不是声称可以抵抗拥有管理员权限的人。
 
 ## 部署
 
-### 1. 获取项目
+### 1. 系统要求
 
-在 PowerShell 中执行：
+- Windows 10 或 Windows 11
+- Node.js 18 或更高版本，并且 node.exe 位于 PATH
+- Windows PowerShell 5.1 或更高版本
+- 安装开机任务、浏览器企业策略或关闭管理员权限程序时，需要管理员 PowerShell
+- Edge 强制扩展功能需要已安装 Microsoft Edge；Chrome 模式需要已安装 Google Chrome
+- AI 分类需要 DeepSeek API key；没有 key 时仍可使用窗口监控和本地规则兜底
 
-```powershell
-git clone https://github.com/Liuuoo/FocusGuard.git
-cd FocusGuard
-```
+### 2. 获取项目
 
-项目不依赖第三方 npm 包，通常不需要执行 `npm install`。确认 Node.js 可用：
+    git clone https://github.com/Liuuoo/FocusGuard.git
+    cd FocusGuard
+    node --version
+    npm --version
 
-```powershell
-node --version
-npm --version
-```
+项目不依赖第三方 npm 包，通常不需要执行 npm install。
 
-### 2. 配置 DeepSeek API key（使用 AI 时必做）
+### 3. 配置 DeepSeek API key
 
-如果要使用 AI 评估软件和网页，必须先准备 DeepSeek API key，并写入运行 FocusGuard 的 Windows 用户环境变量。没有 key 时服务仍能启动，但 AI 分类不会工作，只会使用本地规则兜底。
+使用 AI 评估软件和网页时，需要准备 DeepSeek API key。不要把 key 写入代码、README、浏览器扩展、截图或 Git 仓库。
 
-推荐将 key 写入当前 Windows 用户的环境变量，不要写入代码、README、浏览器扩展或 Git 仓库：
+推荐写入运行 FocusGuard 的 Windows 用户环境变量：
 
-```powershell
-[Environment]::SetEnvironmentVariable(
-    "DEEPSEEK_API_KEY",
-    "在这里填写你的 key",
-    "User"
-)
-```
+    [Environment]::SetEnvironmentVariable(
+        "DEEPSEEK_API_KEY",
+        "在这里填写你的 DeepSeek key",
+        "User"
+    )
 
-设置后需要重新打开 PowerShell，并重启 FocusGuard。检查是否配置成功时只查看布尔状态，不要打印 key：
+设置后必须重新打开 PowerShell，并重启 FocusGuard。只检查是否存在，不要输出 key：
 
-```powershell
-([Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")) -ne $null
-```
+    ([Environment]::GetEnvironmentVariable("DEEPSEEK_API_KEY", "User")) -ne $null
 
-上面的检查命令应返回 `True`。如果返回 `False`，不要继续排查网页，先重新设置 key 并打开一个新的 PowerShell 窗口。计划任务默认以安装任务的登录用户运行，因此 key 必须属于同一个 Windows 用户；如果任务由其他用户运行，需要为那个用户重新设置环境变量，或在管理员确认后使用机器级环境变量。
+预期结果为 True。计划任务默认以安装任务的登录用户运行，因此 key 必须属于同一个 Windows 用户。服务端会通过 HTTPS 请求 DeepSeek，key 不会进入浏览器扩展。
 
-启动服务后，再检查 API 状态：
+启动后可以检查：
 
-```powershell
-$status = Invoke-RestMethod http://127.0.0.1:37831/api/status
-if (-not $status.deepSeekConfigured) {
-    throw "DeepSeek API key 未被 FocusGuard 进程读取"
-}
-$status | Select-Object monitoring,deepSeekConfigured | Format-List
-```
+    $status = Invoke-RestMethod http://127.0.0.1:37831/api/status
+    $status | Select-Object monitoring,deepSeekConfigured,dayLabel,dayReason | Format-List
 
-服务端只把 key 放在进程环境中，并通过 HTTPS 请求 DeepSeek API；key 不会写入浏览器扩展。若 key 曾经被粘贴到公开聊天、截图、日志或仓库，部署前应在服务商控制台撤销并重新生成。
+如果 key 曾经被粘贴到公开聊天、截图、日志或仓库，应先在服务商控制台撤销并重新生成。
 
-### 3. 首次启动
+### 4. 启动服务
 
 普通启动：
 
-```powershell
-npm start
-```
+    npm start
 
-隐藏控制台窗口启动：
+隐藏启动：
 
-```powershell
-.\start-focusguard.ps1
-```
+    .\start-focusguard.ps1
 
-需要关闭管理员权限运行的软件时，使用管理员 PowerShell：
+需要关闭管理员权限软件时，使用管理员 PowerShell：
 
-```powershell
-.\start-focusguard-admin.ps1
-```
+    .\start-focusguard-admin.ps1
 
-PowerShell 执行策略阻止脚本时，可以使用一次性绕过方式：
+打开页面：
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\start-focusguard.ps1
-```
+    儿童端：http://127.0.0.1:37831/
+    管理端：http://127.0.0.1:37831/admin
 
-启动后打开：
+首次进入管理端时设置至少 6 位的管理密码。密码只以 PBKDF2 哈希形式保存在本机 data\focusguard.json 中。
 
-```text
-儿童查看页：http://127.0.0.1:37831/
-管理页：  http://127.0.0.1:37831/admin
-```
+### 5. 设置额度和寒暑假
 
-第一次进入管理页时设置至少 6 位的管理密码。密码只以 PBKDF2 哈希形式保存在本机 `data\focusguard.json` 中。
+登录管理端后设置：
 
-### 4. 管理页配置
+1. 工作日每日娱乐额度
+2. 休息日每日娱乐额度
+3. 寒假开始和结束日期
+4. 暑假开始和结束日期
+5. 是否启用 DeepSeek AI 分类
 
-登录 `/admin` 后可以配置：
+默认额度为工作日 60 分钟、休息日 120 分钟。将某个额度设置为 0 表示当天不设置有效的自动关闭上限。
 
-1. 工作日每日娱乐总额度
-2. 休息日每日娱乐总额度（周六日和已配置的寒暑假）
-3. 寒假开始日期和结束日期
-4. 暑假开始日期和结束日期
-5. DeepSeek Pro 模型（固定使用 `deepseek-v4-pro`）
-6. 是否启用 AI 分类
+填写寒暑假后点击保存，管理端会提示“设置成功”；儿童端会显示“休息日（寒假）”或“休息日（暑假）”。
 
-软件、网页和浏览器标签页不需要手工维护白名单，程序内部仅保留系统级过滤和浏览器识别所需的默认规则。
+### 6. 配置开机自启
 
-默认额度是工作日 60 分钟、休息日 120 分钟。将额度设置为 `0` 表示该日不设置有效的自动关闭上限。寒假和暑假日期默认留空，留空时仍然只有周六日属于休息日。
-管理端的活跃和娱乐摘要只显示前台/可见累计达到 3 分钟的记录；保存使用时间后页面会显示“设置成功”。
+推荐使用管理员 PowerShell：
 
-寒暑假日期必须填写完整的开始和结束日期，格式由日期选择器提供。开始日期晚于结束日期、日期不存在或只填写一端时，保存会被拒绝并显示错误，不会改变原有设置。
+    .\install-startup-admin.ps1
 
-### 5. 配置开机自启
+它会创建名为 FocusGuard 的隐藏计划任务，在用户登录后启动本地服务，不创建托盘图标。启动脚本通过自身位置定位项目，不依赖当前电脑的用户名或固定盘符。
 
-推荐使用管理员 PowerShell 执行：
+查看任务：
 
-```powershell
-.\install-startup-admin.ps1
-```
+    Get-ScheduledTask -TaskName FocusGuard
 
-它会创建名为 `FocusGuard` 的隐藏计划任务：
-
-- 用户登录后自动启动
-- 延迟约 15 秒
-- 使用最高可用权限运行
-- 允许电池供电时运行
-- 任务失败时尝试重启
-- 启动器自动定位项目目录和 PATH 中的 Node.js，不依赖固定盘符或用户名
-
-如果不需要最高权限，也可以直接运行：
-
-```powershell
-.\install-startup-task.ps1
-```
-
-查看任务状态：
-
-```powershell
-Get-ScheduledTask -TaskName FocusGuard
-```
-
-### 6. 配置 Edge/Chrome 浏览器扩展
+### 7. 配置 Edge/Chrome 浏览器监控
 
 #### 临时调试安装
 
-适合开发调试，不适合儿童使用环境：
+1. 打开 Edge 或 Chrome 的扩展管理页。
+2. 开启开发人员模式。
+3. 选择“加载解压缩的扩展”。
+4. 选择项目中的 browser-extension 目录。
 
-1. 打开 Edge 或 Chrome 扩展管理页
-2. 开启开发人员模式
-3. 选择“加载解压缩的扩展”
-4. 选择项目中的 `browser-extension` 目录
-
-扩展只向本机服务上报浏览器窗口的活动标签页、标题、URL、窗口边界和窗口状态。DeepSeek key 不会进入扩展。
+扩展只向 http://127.0.0.1:37831 上报活动标签页、标题、URL、窗口边界和窗口状态，DeepSeek key 不会进入扩展。
 
 #### 管理员强制安装
 
 推荐在管理员 PowerShell 中执行：
 
-```powershell
-# 默认管理 Edge
-.\install-browser-force.ps1
+    # 只管理 Edge
+    .\install-browser-force.ps1
 
-# 同时管理 Edge 和 Chrome
-.\install-browser-force.ps1 -Browser Both
+    # 同时管理 Edge 和 Chrome
+    .\install-browser-force.ps1 -Browser Both
 
-# 只管理 Chrome
-.\install-browser-force.ps1 -Browser Chrome
-```
+    # 只管理 Chrome
+    .\install-browser-force.ps1 -Browser Chrome
 
-脚本会：
+脚本会使用本机浏览器打包扩展、保存本地签名私钥、写入企业强制安装策略并将扩展加入允许列表。安装成功后重启浏览器，在下面页面检查：
 
-- 使用本机浏览器打包扩展
-- 生成并保存本地扩展签名密钥
-- 写入 Edge/Chrome 企业强制安装策略
-- 将 FocusGuard 扩展加入允许列表
-- 默认阻止其他扩展安装或加载
-- 可选设置 Edge 全部下载限制
+    Edge：edge://policy
+    Chrome：chrome://policy
 
-安装成功后重启浏览器，并检查：
+普通浏览器用户不能删除或禁用强制安装项，但 Windows 管理员仍可以修改企业策略，这是 Windows 的权限边界。
 
-```text
-Edge：edge://policy
-Chrome：chrome://policy
-```
+如需禁止 Edge 的所有下载：
 
-可以在扩展管理页确认 FocusGuard 已由策略安装。普通浏览器用户不能删除或禁用强制安装项，但 Windows 管理员仍然可以修改企业策略，这是 Windows 的权限边界。
+    .\install-browser-force.ps1 -BlockAllEdgeDownloads
 
-## 验证部署
+### 8. 验证部署
 
-查看服务状态：
+    Invoke-RestMethod http://127.0.0.1:37831/api/status | ConvertTo-Json
+    Invoke-RestMethod http://127.0.0.1:37831/api/child-summary | ConvertTo-Json -Depth 8
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:37831/api/status | ConvertTo-Json
-```
+重点确认：
 
-重点检查：
+- monitoring 为 True
+- foregroundMonitoring 为 True
+- processMonitoring 为 True
+- browserDownloadGuardMonitoring 为 True
+- 使用 AI 时 deepSeekConfigured 为 True
+- dayLabel 和 dayReason 与当天的周末/寒暑假设置一致
 
-- `monitoring` 是否为 `true`
-- `foregroundMonitoring` 是否为 `true`
-- `processMonitoring` 是否为 `true`
-- `browserDownloadGuardMonitoring` 是否为 `true`
-- `deepSeekConfigured` 是否符合预期
+## 可移植性与运行数据
 
-查看儿童端实时窗口数据：
+项目可以放在任意目录，例如 C:\FocusGuard、D:\Tools\FocusGuard 或用户文档目录。脚本通过自身位置定位服务、数据和日志，不依赖当前电脑的用户名。
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:37831/api/child-summary | ConvertTo-Json -Depth 8
-```
+换电脑部署时，需要重新准备 Node.js、DeepSeek key、管理员权限、浏览器和本地配置。GitHub 仓库不会携带原电脑的管理密码、使用记录、分类缓存或扩展签名私钥。
 
-浏览器强制安装后，重启 Edge，再检查 `nativeBrowserWindowMonitoring` 和 `liveWindows` 数据。
+运行时内容包括：
 
-## 浏览器扩展缺失时的行为
+    data\focusguard.json                         配置、密码哈希、统计和分类缓存
+    data\browser-extension\focusguard.pem       扩展签名私钥
+    data\browser-extension\focusguard.crx       打包后的扩展
+    data\quarantine\browser-installers\        被隔离的浏览器安装包
+    logs\                                         服务和策略安装日志
 
-即使没有扩展，原生窗口监控仍然可以识别 Edge 窗口的可见面积和前台/后台状态。但服务只能使用窗口标题做浏览器标签页兜底分类，无法可靠读取同一个浏览器窗口中的后台标签页 URL。
+这些目录已被 .gitignore 排除，不应上传到 GitHub。尤其不要上传 focusguard.pem 或任何 API key。
 
-因此：
+## 停止与卸载
 
-- 软件窗口的可见面积计时不依赖扩展
-- Edge 多窗口和最小化状态可以由原生采样识别
-- 浏览器后台标签页的精确 URL 分类和关闭需要扩展
-- 删除、禁用扩展或关闭开发者模式会降低浏览器标签页监控能力；管理员策略可以提高绕过成本，但不能超越 Windows 管理员权限边界
+管理端的“退出监控”需要管理密码。删除开机任务：
 
-## 文件和数据
+    .\uninstall-startup-task.ps1
 
-运行时会生成以下本地内容：
+该命令不会自动删除 data、logs 或浏览器企业策略。完全重置本地配置前，先停止服务；下面命令会删除统计记录、管理密码、分类缓存和扩展签名材料：
 
-```text
-data\focusguard.json                         配置、密码哈希、统计和分类缓存
-data\browser-extension\focusguard.pem       扩展签名私钥
-data\browser-extension\focusguard.crx       打包后的扩展
-data\quarantine\browser-installers\         被隔离的浏览器安装包
-logs\                                         服务和策略安装日志
-```
+    Remove-Item -LiteralPath .\data, .\logs -Recurse -Force
 
-这些内容包含个人使用记录、配置和私钥，已通过 `.gitignore` 排除，不应上传到 GitHub。尤其不要上传 `focusguard.pem` 或任何 API key。
-
-如果需要保持强制扩展的固定 ID，应安全备份本地 `focusguard.pem`，但不要把它放进公开仓库或发送给他人。
-
-## 停止和卸载
-
-从管理页退出监控需要输入管理密码：
-
-```text
-http://127.0.0.1:37831/admin
-```
-
-删除开机计划任务：
-
-```powershell
-.\uninstall-startup-task.ps1
-```
-
-该命令不会自动删除 `data`、`logs`、隔离文件或浏览器企业策略。删除浏览器强制策略前，应先确认电脑上没有其他浏览器策略依赖，并在管理员权限下通过 `edge://policy` 或 `chrome://policy` 检查结果。浏览器策略是系统级设置，建议在修改前导出或记录原有策略。
-
-如果需要完全重置本地配置，在停止服务后删除以下目录即可，但这会删除统计记录、管理密码、分类缓存和扩展签名材料：
-
-```powershell
-Remove-Item -LiteralPath .\data, .\logs -Recurse -Force
-```
+删除浏览器策略前，应先检查 edge://policy 或 chrome://policy，避免影响同一台电脑上的其他策略。
 
 ## 常见问题
 
-### 管理页提示 DeepSeek key 未配置
+### AI 没有生效
 
-确认 key 写入的是当前用户环境变量，并重新打开 PowerShell、重启计划任务：
+确认 DEEPSEEK_API_KEY 写入的是运行服务的同一个 Windows 用户环境变量，重新打开 PowerShell 并重启计划任务。没有 key 时服务仍能运行，但会使用本地规则兜底。
 
-```powershell
-Stop-ScheduledTask -TaskName FocusGuard
-Start-ScheduledTask -TaskName FocusGuard
-```
+### 寒暑假没有变成休息日
 
-不要在终端输出完整 key。服务没有 key 时仍然可以运行，但会使用本地规则兜底。
+确认管理端的开始和结束日期都已填写，并点击保存。日期范围包含首尾两天；如果只填写一端、日期不存在或开始日期晚于结束日期，服务会拒绝保存。
 
-### 目标软件没有被关闭
+### 娱乐软件没有被关闭
 
-检查以下事项：
-
-1. 每日娱乐额度是否已经达到
-2. 软件是否被 AI 判为娱乐或社交
-3. 软件是否被程序内部系统过滤
-4. FocusGuard 是否以管理员权限运行
-5. 管理页是否显示 `lastLimitError`
-
-若目标进程以管理员权限运行，而 FocusGuard 不是管理员权限，Windows 可能拒绝 `taskkill`。
+检查每日总额度是否达到、AI 是否把目标判为 entertainment 或 social、FocusGuard 是否以管理员权限运行，以及管理端是否显示 lastLimitError。
 
 ### 浏览器标签页没有被识别
 
-确认扩展已安装并运行，确认扩展能访问：
-
-```text
-http://127.0.0.1:37831
-```
-
-强制安装后重启浏览器并检查浏览器策略页。没有扩展时只能使用窗口标题兜底，无法保证后台标签页 URL 识别。
+确认扩展已安装、浏览器已重启并能访问 http://127.0.0.1:37831。没有扩展时，原生窗口可以计时，但无法可靠获得同一窗口中所有后台标签页的 URL。
 
 ### 强制安装脚本失败
 
-常见原因包括：
-
-- 没有用管理员 PowerShell 运行
-- Edge/Chrome 不在默认安装目录
-- 浏览器正在占用打包用户数据目录
-- 组策略或安全软件阻止注册表写入
-- Node.js 不在 PATH
-
-关闭浏览器后重试，并查看：
-
-```text
-logs\browser-policy-installer.log
-```
+常见原因是没有使用管理员 PowerShell、浏览器正在运行、浏览器不在默认位置、组策略阻止注册表写入或 Node.js 不在 PATH。关闭浏览器后重试，并查看 logs\browser-policy-installer.log。
 
 ### 端口被占用
 
-默认服务端口是 `37831`。先检查占用情况：
+默认端口是 37831：
 
-```powershell
-Get-NetTCPConnection -LocalPort 37831 -State Listen
-```
+    Get-NetTCPConnection -LocalPort 37831 -State Listen
 
-当前启动脚本和浏览器扩展默认都使用该端口。若要修改端口，需要同时调整服务环境变量、启动方式、扩展中的 `SERVICE_URL`、浏览器扩展 host permissions 和强制安装脚本参数。
+启动脚本、浏览器扩展和部署文档默认都使用该端口；改端口时必须同时调整服务、扩展权限和策略安装脚本。
 
-## 开发
-
-启动开发服务：
-
-```powershell
-npm start
-```
+## 开发与测试
 
 语法检查：
 
-```powershell
-node --check src/server.js
-node --check public/app.js
-node --check public/child.js
-```
+    node --check src\server.js
+    node --check src\schedule.js
+    node --check public\app.js
+    node --check public\child.js
 
-PowerShell 脚本应使用 Windows PowerShell 或兼容的 PowerShell 环境执行。开发时不要提交 `data/`、`logs/`、`.env`、`.pem`、`.crx` 或任何本机运行记录。
+运行测试：
+
+    npm test
+
+测试覆盖 AI 软件分类、OBS 工具识别、未知软件研究流程、周末判断、寒暑假工作日判断、跨年寒假和日期校验。
 
 ## 项目结构
 
-```text
-src/server.js                    本地 HTTP 服务、计时、AI、限制和 API
-src/schedule.js                  工作日、周末和寒暑假休息日判断
-src/foreground.ps1               原生窗口、前台窗口和可见矩形采样
-src/processes.ps1                进程列表采样
-src/browser-download-guard.ps1   浏览器进程和安装包防绕过
-browser-extension/               Edge/Chrome 扩展源代码
-public/index.html                儿童查看页
-public/admin.html                管理页
-install-startup-admin.ps1        管理员安装开机任务
-install-browser-force.ps1        管理员安装浏览器强制策略
-data/                             运行时生成，不提交到 Git
-logs/                             运行时生成，不提交到 Git
-```
+    src/server.js                    本地 HTTP 服务、计时、AI、限制和 API
+    src/schedule.js                  工作日、周末和寒暑假休息日判断
+    src/app-classifier.js            软件分类、提示词、搜索和 AI 结果解析
+    src/foreground.ps1               原生窗口、前台窗口和可见矩形采样
+    src/processes.ps1                进程列表采样
+    src/browser-download-guard.ps1   浏览器进程和安装包防绕过
+    src/close-browser-tab.ps1        浏览器标签页原生关闭兜底
+    browser-extension/               Edge/Chrome 扩展源代码
+    public/index.html                儿童端页面
+    public/admin.html                管理端页面
+    install-startup-admin.ps1        管理员安装开机任务
+    install-browser-force.ps1        管理员安装浏览器强制策略
+    docs/demo/screenshots/           真实使用截图
+    docs/demo/media/limit-demo.mp4   达到额度后的限制演示视频
+    data/                            运行时生成，不提交
+    logs/                            运行时生成，不提交

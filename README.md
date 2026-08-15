@@ -73,9 +73,9 @@ TapTap 等内容消费类软件会进入娱乐分类。服务先通过 Windows �
 
 当软件和网页共享的娱乐总额度耗尽后，系统会针对娱乐软件执行关闭，对浏览器中的受限娱乐标签页请求关闭。正常的学习、工作和工具页面不会因为娱乐额度耗尽而被关闭。
 
-视频演示了腾讯视频、哔哩哔哩等娱乐页面在额度到达上限后被自动关闭的过程。下面的 GIF 可以直接在 GitHub 页面播放，不需要先下载：
+视频演示了腾讯视频、哔哩哔哩等娱乐页面在额度到达上限后被自动关闭的过程。下面的 GIF 是基于原始素材生成的 2 倍速、30fps 版本，可以直接在 GitHub 页面播放，不需要先下载：
 
-![额度耗尽后自动关闭娱乐内容](docs/demo/media/limit-demo.gif)
+![额度耗尽后自动关闭娱乐内容（2 倍速、30fps）](docs/demo/media/limit-demo-2x-30fps.gif)
 
 如需保留声音或查看高清原始录屏，可以下载 [原始 MP4 视频](docs/demo/media/limit-demo.mp4)。
 
@@ -397,7 +397,8 @@ FocusGuard 默认每秒采样一次 Windows 顶层窗口：
     install-startup-admin.ps1        管理员安装开机任务
     install-browser-force.ps1        管理员安装浏览器强制策略
     docs/demo/screenshots/           真实使用截图
-    docs/demo/media/limit-demo.gif   GitHub 页面直接播放的限制演示
+    docs/demo/media/limit-demo.gif   原始限制演示 GIF
+    docs/demo/media/limit-demo-2x-30fps.gif  2 倍速、30fps 限制演示 GIF
     docs/demo/media/limit-demo.mp4   带声音的高清原始录屏
     data/                            运行时生成，不提交
     logs/                            运行时生成，不提交

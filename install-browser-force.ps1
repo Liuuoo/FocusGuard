@@ -56,15 +56,53 @@ $keyPath = Join-Path $dataDir "focusguard.pem"
 $crxPath = Join-Path $dataDir "focusguard.crx"
 $metadataPath = Join-Path $dataDir "metadata.json"
 
+function Find-BrowserExecutable {
+    param(
+        [string]$ExecutableName,
+        [string[]]$Candidates
+    )
+
+    $command = Get-Command $ExecutableName -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($command -and (Test-Path -LiteralPath $command.Source)) {
+        return $command.Source
+    }
+
+    $appPathKeys = @(
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$ExecutableName",
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\$ExecutableName",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\$ExecutableName"
+    )
+    foreach ($key in $appPathKeys) {
+        try {
+            $installedPath = (Get-Item -LiteralPath $key -ErrorAction Stop).GetValue("")
+            if ($installedPath -and (Test-Path -LiteralPath $installedPath)) {
+                return $installedPath
+            }
+        } catch {}
+    }
+
+    foreach ($candidate in $Candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+            return $candidate
+        }
+    }
+    return $null
+}
+
+$edgeCandidates = @(
+    if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "Microsoft\Edge\Application\msedge.exe" }
+    if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} "Microsoft\Edge\Application\msedge.exe" }
+    if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Microsoft\Edge\Application\msedge.exe" }
+)
+$chromeCandidates = @(
+    if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "Google\Chrome\Application\chrome.exe" }
+    if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} "Google\Chrome\Application\chrome.exe" }
+    if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Google\Chrome\Application\chrome.exe" }
+)
 $browserPaths = [ordered]@{
-    Edge = @(
-        "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-        "C:\Program Files\Microsoft\Edge\Application\msedge.exe"
-    )
-    Chrome = @(
-        "C:\Program Files\Google\Chrome\Application\chrome.exe",
-        "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-    )
+    Edge = Find-BrowserExecutable "msedge.exe" $edgeCandidates
+    Chrome = Find-BrowserExecutable "chrome.exe" $chromeCandidates
 }
 
 $targets = @()
@@ -73,16 +111,11 @@ if ($Browser -eq "Both" -or $Browser -eq "Chrome") { $targets += "Chrome" }
 
 $packBrowser = $null
 foreach ($target in $targets) {
-    foreach ($candidate in $browserPaths[$target]) {
-        if (Test-Path -LiteralPath $candidate) {
-            $packBrowser = $candidate
-            break
-        }
-    }
+    if ($browserPaths[$target]) { $packBrowser = $browserPaths[$target] }
     if ($packBrowser) { break }
 }
 if (-not $packBrowser) {
-    throw "Could not find an installed Edge or Chrome browser to package the extension."
+    throw "Could not find an installed browser for -Browser $Browser. Check that the selected browser is installed and available in PATH, App Paths, or a standard installation directory."
 }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json

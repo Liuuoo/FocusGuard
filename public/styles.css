@@ -440,6 +440,10 @@ dd {
   flex-wrap: wrap;
 }
 
+.actions + .actions {
+  margin-top: 14px;
+}
+
 .saveFeedback {
   min-height: 40px;
   display: inline-flex;

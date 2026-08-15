@@ -352,8 +352,19 @@ textarea {
 }
 
 input[type="number"],
-input[type="text"] {
+input[type="text"],
+input[type="date"] {
   margin: 6px 0 14px;
+}
+
+.scheduleHint {
+  margin: 2px 0 8px;
+}
+
+.dateRange {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 input[type="checkbox"] {
@@ -525,7 +536,8 @@ dd {
   .grid,
   .summaryItem,
   .liveRow,
-  .unknownAppRow {
+  .unknownAppRow,
+  .dateRange {
     grid-template-columns: 1fr;
   }
 

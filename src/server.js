@@ -10,6 +10,11 @@ const {
   heuristicClassifyApp,
   isEntertainmentClassification
 } = require("./app-classifier");
+const {
+  getDaySchedule,
+  normalizeSchoolBreaks,
+  validateSchoolBreaks
+} = require("./schedule");
 
 const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.join(ROOT, "data");
@@ -139,6 +144,12 @@ const defaultDb = {
       weekdayMinutes: 60,
       weekendMinutes: 120
     },
+    schoolBreaks: {
+      winterStart: "",
+      winterEnd: "",
+      summerStart: "",
+      summerEnd: ""
+    },
     browserEntertainmentLimits: {
       weekdayMinutes: 60,
       weekendMinutes: 120
@@ -194,6 +205,9 @@ function loadDb() {
       || defaultDb.config.entertainmentLimits;
     mergedConfig.entertainmentLimits = normalizeEntertainmentLimits(storedEntertainmentLimits);
     mergedConfig.browserEntertainmentLimits = clone(mergedConfig.entertainmentLimits);
+    mergedConfig.schoolBreaks = normalizeSchoolBreaks(
+      stored.config?.schoolBreaks || defaultDb.config.schoolBreaks
+    );
     mergedConfig.appClassificationOverrides = normalizeAppClassificationOverrides(
       stored.config?.appClassificationOverrides
     );
@@ -312,8 +326,11 @@ function isEntertainmentCategory(category) {
 }
 
 function currentDayType(ms = Date.now()) {
-  const day = new Date(ms).getDay();
-  return day === 0 || day === 6 ? "weekend" : "weekday";
+  return getDaySchedule(ms, db.config.schoolBreaks).dayType;
+}
+
+function currentDaySchedule(ms = Date.now()) {
+  return getDaySchedule(ms, db.config.schoolBreaks);
 }
 
 function exeFromActivity(activity) {
@@ -1994,6 +2011,7 @@ async function route(req, res) {
 
   if (url.pathname === "/api/status") {
     clearStaleLimitError();
+    const daySchedule = currentDaySchedule();
     return sendJson(res, 200, {
       configured: Boolean(db.config.passwordHash),
       authed: isAuthed(req),
@@ -2012,7 +2030,10 @@ async function route(req, res) {
       deepSeekConfigured: Boolean(deepSeekApiKey()),
       entertainmentTotalMs: Math.round(getUnifiedEntertainmentMs()),
       entertainmentLimitMinutes: entertainmentLimitMinutes(),
-      today: todayKey()
+      today: todayKey(),
+      dayType: daySchedule.dayType,
+      dayLabel: daySchedule.dayLabel,
+      dayReason: daySchedule.dayReason
     });
   }
 
@@ -2027,9 +2048,12 @@ async function route(req, res) {
     const totalMs = Math.round(getUnifiedEntertainmentMs(day));
     const entertainmentLimitMinutesValue = entertainmentLimitMinutes();
     const liveWindows = liveWindowSummary();
+    const daySchedule = currentDaySchedule();
     return sendJson(res, 200, {
       day,
       dayType: currentDayType(),
+      dayLabel: daySchedule.dayLabel,
+      dayReason: daySchedule.dayReason,
       monitoring: Boolean(foregroundMonitor && processMonitor && browserDownloadGuard),
       nativeBrowserWindowMonitoring: nativeBrowserTrackingActive(),
       visibleBrowserWindowCount: visibleBrowserWindowCount(),
@@ -2074,8 +2098,12 @@ async function route(req, res) {
   if (url.pathname === "/api/summaries") {
     if (!isAuthed(req)) return sendJson(res, 401, { error: "未授权" });
     const day = url.searchParams.get("day") || todayKey();
+    const daySchedule = currentDaySchedule();
     return sendJson(res, 200, {
       day,
+      dayType: daySchedule.dayType,
+      dayLabel: daySchedule.dayLabel,
+      dayReason: daySchedule.dayReason,
       activeRows: filterAdminSummaryRows(activeSummary(day)),
       runningRows: runningSummary(day),
       nativeBrowserWindowMonitoring: nativeBrowserTrackingActive(),
@@ -2184,6 +2212,11 @@ async function route(req, res) {
       if (entertainmentLimits && typeof entertainmentLimits === "object") {
         db.config.entertainmentLimits = normalizeEntertainmentLimits(entertainmentLimits);
         db.config.browserEntertainmentLimits = clone(db.config.entertainmentLimits);
+      }
+      if (body.schoolBreaks && typeof body.schoolBreaks === "object") {
+        const schoolBreakError = validateSchoolBreaks(body.schoolBreaks);
+        if (schoolBreakError) return sendJson(res, 400, { error: schoolBreakError });
+        db.config.schoolBreaks = normalizeSchoolBreaks(body.schoolBreaks);
       }
       if (body.aiClassification && typeof body.aiClassification === "object") {
         db.config.aiClassification = {

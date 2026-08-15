@@ -18,6 +18,11 @@ const APP_CATEGORY_OPTIONS = [
   ["tool", "工具"]
 ];
 
+function dayScheduleText(data) {
+  const label = data.dayLabel || (data.dayType === "weekend" ? "休息日" : "工作日");
+  return data.dayReason ? `${label}（${data.dayReason}）` : label;
+}
+
 function formatMs(ms) {
   const minutes = Math.round(ms / 60000);
   if (minutes < 60) return `${minutes} 分钟`;
@@ -45,7 +50,7 @@ async function refreshStatus() {
     ? `本地监控服务正在运行；上次关闭失败：${status.lastLimitError}`
     : status.monitoring ? "本地监控服务正在运行" : "监控服务未完全运行";
   $("monitorBadge").textContent = status.monitoring ? "运行中" : "部分运行";
-  $("todayLabel").textContent = status.today + " · 前台累计 ≥3 分钟";
+  $("todayLabel").textContent = status.today + " · " + dayScheduleText(status) + " · 前台累计 ≥3 分钟";
   if (!status.deepSeekConfigured && state.authed) {
     $("statusText").textContent += "；DeepSeek key 尚未配置";
   }
@@ -218,8 +223,13 @@ async function loadSummaries() {
 async function loadConfig() {
   const config = await api("/api/config");
   const entertainmentLimits = config.entertainmentLimits || config.browserEntertainmentLimits || {};
+  const schoolBreaks = config.schoolBreaks || {};
   $("entertainmentWeekdayLimit").value = entertainmentLimits.weekdayMinutes ?? 60;
   $("entertainmentWeekendLimit").value = entertainmentLimits.weekendMinutes ?? 120;
+  $("winterVacationStart").value = schoolBreaks.winterStart || "";
+  $("winterVacationEnd").value = schoolBreaks.winterEnd || "";
+  $("summerVacationStart").value = schoolBreaks.summerStart || "";
+  $("summerVacationEnd").value = schoolBreaks.summerEnd || "";
   $("aiEnabled").checked = Boolean(config.aiClassification?.enabled);
   $("aiModel").value = config.aiClassification?.model || DEFAULT_AI_MODEL;
   state.configLoaded = true;
@@ -252,6 +262,12 @@ async function saveConfig() {
         entertainmentLimits: {
           weekdayMinutes: Number($("entertainmentWeekdayLimit").value || 0),
           weekendMinutes: Number($("entertainmentWeekendLimit").value || 0)
+        },
+        schoolBreaks: {
+          winterStart: $("winterVacationStart").value,
+          winterEnd: $("winterVacationEnd").value,
+          summerStart: $("summerVacationStart").value,
+          summerEnd: $("summerVacationEnd").value
         },
         aiClassification: {
           enabled: $("aiEnabled").checked,

@@ -6,7 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test tests/app-classifier.test.js"
+    "test": "node --test tests/app-classifier.test.js tests/schedule.test.js"
   },
   "engines": {
     "node": ">=18"

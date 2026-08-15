@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>健康使用电脑 · 管理端</title>
-  <link rel="stylesheet" href="/styles.css?v=20260815-6">
+  <link rel="stylesheet" href="/styles.css?v=20260815-7">
 </head>
 <body>
   <main class="shell">
@@ -61,8 +61,29 @@
           <p class="hint">软件和浏览器标签页共用这个额度。DeepSeek 会评估软件和网页用途，娱乐、社交都会计入。</p>
           <label>工作日总额度（分钟）</label>
           <input id="entertainmentWeekdayLimit" type="number" min="0" step="1">
-          <label>非工作日总额度（分钟）</label>
+          <label>休息日总额度（分钟）</label>
           <input id="entertainmentWeekendLimit" type="number" min="0" step="1">
+          <p class="hint scheduleHint">周六日，以及下方设置的寒假、暑假日期范围，都会使用休息日额度。日期留空表示不启用该假期范围。</p>
+          <div class="dateRange">
+            <div>
+              <label for="winterVacationStart">寒假开始</label>
+              <input id="winterVacationStart" type="date">
+            </div>
+            <div>
+              <label for="winterVacationEnd">寒假结束</label>
+              <input id="winterVacationEnd" type="date">
+            </div>
+          </div>
+          <div class="dateRange">
+            <div>
+              <label for="summerVacationStart">暑假开始</label>
+              <input id="summerVacationStart" type="date">
+            </div>
+            <div>
+              <label for="summerVacationEnd">暑假结束</label>
+              <input id="summerVacationEnd" type="date">
+            </div>
+          </div>
           <label>DeepSeek 模型</label>
           <input id="aiModel" type="text" value="deepseek-v4-pro" readonly spellcheck="false">
           <label class="checkRow">
@@ -90,6 +111,6 @@
       </section>
     </section>
   </main>
-  <script src="/app.js?v=20260815-4"></script>
+  <script src="/app.js?v=20260815-5"></script>
 </body>
 </html>

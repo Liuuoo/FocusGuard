@@ -144,7 +144,10 @@ async function refreshChild() {
   $("remainingRatio").textContent = limitMs > 0 ? `剩余 ${Math.round(remainingPercent)}%` : "未设置总额度";
   $("childUsedLabel").textContent = `已用 ${formatMs(usedMs)}`;
   $("childLimitLabel").textContent = limitMs > 0 ? `总额度 ${formatMs(limitMs)}` : "总额度未设置";
-  $("childDayType").textContent = data.dayType === "weekend" ? "非工作日" : "工作日";
+  const dayLabel = data.dayLabel || (data.dayType === "weekend" ? "休息日" : "工作日");
+  $("childDayType").textContent = data.dayReason
+    ? `${dayLabel}（${data.dayReason}）`
+    : dayLabel;
   $("childUsageBar").setAttribute("aria-valuenow", String(Math.round(usagePercent)));
   usageBar.style.width = `${usagePercent}%`;
   usageBar.classList.toggle("nearLimit", usagePercent >= 75 && usagePercent < 100);

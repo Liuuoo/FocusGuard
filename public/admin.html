@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FocusGuard 管理</title>
-  <link rel="stylesheet" href="/styles.css?v=20260815-5">
+  <title>健康使用电脑 · 管理端</title>
+  <link rel="stylesheet" href="/styles.css?v=20260815-6">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
-        <h1>FocusGuard 管理</h1>
+        <h1>健康使用电脑 · 管理端</h1>
         <p id="statusText">正在连接本地监控服务</p>
       </div>
       <button id="refreshBtn" title="刷新">刷新</button>
@@ -78,8 +78,18 @@
           </div>
         </section>
       </div>
+
+      <section class="panel unknownPanel">
+        <div class="panelHeader">
+          <h2>待分类软件</h2>
+          <span id="unknownAppCount">0 个</span>
+        </div>
+        <p class="hint">AI 无法确认的软件不会计入娱乐时长。请在这里选择分组，保存后立即生效。</p>
+        <div id="unknownAppsList" class="unknownApps"></div>
+        <p id="unknownAppsFeedback" class="saveFeedback" role="status" aria-live="polite"></p>
+      </section>
     </section>
   </main>
-  <script src="/app.js?v=20260815-3"></script>
+  <script src="/app.js?v=20260815-4"></script>
 </body>
 </html>

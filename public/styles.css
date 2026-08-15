@@ -408,6 +408,60 @@ button.danger {
   font-weight: 500;
 }
 
+.unknownPanel {
+  margin-bottom: 16px;
+}
+
+.unknownApps {
+  display: grid;
+  gap: 2px;
+}
+
+.unknownAppRow {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.1fr) minmax(150px, 0.8fr) 120px 72px;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0f3;
+}
+
+.unknownAppRow:last-child {
+  border-bottom: 0;
+}
+
+.unknownAppIdentity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.unknownAppIdentity strong,
+.unknownAppIdentity span,
+.unknownAppUsage {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unknownAppIdentity span,
+.unknownAppUsage {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.unknownAppSelect {
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+}
+
+.unknownAppRow button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
 .bar {
   height: 10px;
   border-radius: 999px;
@@ -470,7 +524,8 @@ dd {
 @media (max-width: 780px) {
   .grid,
   .summaryItem,
-  .liveRow {
+  .liveRow,
+  .unknownAppRow {
     grid-template-columns: 1fr;
   }
 

@@ -5,7 +5,8 @@
   "description": "Local usage monitor with password-protected settings.",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "node --test tests/app-classifier.test.js"
   },
   "engines": {
     "node": ">=18"

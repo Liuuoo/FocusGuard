@@ -7,6 +7,16 @@ const state = {
 };
 const ADMIN_SUMMARY_MIN_MS = 3 * 60 * 1000;
 const DEFAULT_AI_MODEL = "deepseek-v4-pro";
+const APP_CATEGORY_OPTIONS = [
+  ["unknown", "未知"],
+  ["entertainment", "娱乐"],
+  ["work", "工作"],
+  ["study", "学习"],
+  ["shopping", "购物"],
+  ["social", "社交"],
+  ["news", "新闻"],
+  ["tool", "工具"]
+];
 
 function formatMs(ms) {
   const minutes = Math.round(ms / 60000);
@@ -126,12 +136,83 @@ function renderBrowserSummary(data) {
   }
 }
 
+function renderUnknownApps(rows) {
+  const list = $("unknownAppsList");
+  const count = $("unknownAppCount");
+  count.textContent = `${rows.length} 个`;
+  list.innerHTML = "";
+
+  if (!rows.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "没有待家长确认的软件。";
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const row of rows) {
+    const item = document.createElement("div");
+    item.className = "unknownAppRow";
+
+    const identity = document.createElement("div");
+    identity.className = "unknownAppIdentity";
+    const name = document.createElement("strong");
+    name.textContent = row.exe;
+    const detail = document.createElement("span");
+    detail.textContent = row.title || row.reason || "AI 尚未确认用途";
+    identity.append(name, detail);
+
+    const usage = document.createElement("span");
+    usage.className = "unknownAppUsage";
+    usage.textContent = row.ms > 0
+      ? `前台 ${formatMs(row.ms)}${row.runningMs > 0 ? ` · 运行 ${formatMs(row.runningMs)}` : ""}`
+      : row.needsResearch ? "等待资料确认" : "尚无前台记录";
+
+    const select = document.createElement("select");
+    select.className = "unknownAppSelect";
+    select.setAttribute("aria-label", `${row.exe} 的分组`);
+    for (const [value, label] of APP_CATEGORY_OPTIONS) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.appendChild(option);
+    }
+    select.value = "unknown";
+
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "保存";
+    save.addEventListener("click", () => saveAppClassification(row.exe, select.value));
+
+    item.append(identity, usage, select, save);
+    list.appendChild(item);
+  }
+}
+
+async function saveAppClassification(exe, category) {
+  const feedback = $("unknownAppsFeedback");
+  feedback.textContent = "";
+  feedback.classList.remove("error");
+  try {
+    await api("/api/app-classifications", {
+      method: "POST",
+      body: JSON.stringify({ exe, category })
+    });
+    feedback.textContent = `${exe} 已设置为“${categoryToChinese(category)}”`;
+    await loadSummaries();
+  } catch (error) {
+    feedback.textContent = error.message;
+    feedback.classList.add("error");
+  }
+}
+
 async function loadSummaries() {
   const data = await api("/api/summaries");
   const activeRows = (data.activeRows || []).filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
   const entertainmentRows = (data.entertainmentRows || []).filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
   renderSummary($("activeSummaryList"), activeRows, "今天还没有达到 3 分钟的前台活跃记录。");
   renderBrowserSummary({ ...data, entertainmentRows });
+  renderUnknownApps(data.unknownApps || []);
 }
 
 async function loadConfig() {

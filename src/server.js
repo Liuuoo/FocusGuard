@@ -3,6 +3,13 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { spawn } = require("child_process");
+const {
+  APP_CLASSIFICATION_POLICY_VERSION,
+  classifyAppWithAI,
+  classifyKnownApp,
+  heuristicClassifyApp,
+  isEntertainmentClassification
+} = require("./app-classifier");
 
 const ROOT = path.resolve(__dirname, "..");
 const DATA_DIR = path.join(ROOT, "data");
@@ -15,6 +22,16 @@ const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_AI_MODEL = "deepseek-v4-pro";
 const ADMIN_SUMMARY_MINUTES = 3;
 const ADMIN_SUMMARY_MIN_MS = ADMIN_SUMMARY_MINUTES * 60 * 1000;
+const MANUAL_APP_CATEGORIES = new Set([
+  "entertainment",
+  "work",
+  "study",
+  "shopping",
+  "social",
+  "news",
+  "tool",
+  "unknown"
+]);
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -113,6 +130,7 @@ const defaultDb = {
       "liebao.exe"
     ],
     browserTitleWhitelist: [],
+    appClassificationOverrides: {},
     aiClassification: {
       enabled: true,
       model: DEFAULT_AI_MODEL
@@ -156,6 +174,8 @@ const tokens = new Map();
 const browserExtensionHints = new Map();
 const visibleBrowserSessions = new Map();
 const visibleAppSessions = new Map();
+const lastNativeBrowserCloseActions = new Map();
+const nativeBrowserLimitFirstSeen = new Map();
 let lastBrowserExtensionSeenAt = 0;
 let nativeBrowserWindowTracking = false;
 let lastNativeBrowserWindowSampleAt = 0;
@@ -174,6 +194,9 @@ function loadDb() {
       || defaultDb.config.entertainmentLimits;
     mergedConfig.entertainmentLimits = normalizeEntertainmentLimits(storedEntertainmentLimits);
     mergedConfig.browserEntertainmentLimits = clone(mergedConfig.entertainmentLimits);
+    mergedConfig.appClassificationOverrides = normalizeAppClassificationOverrides(
+      stored.config?.appClassificationOverrides
+    );
     mergedConfig.aiClassification = {
       ...clone(defaultDb).config.aiClassification,
       ...(stored.config?.aiClassification || {})
@@ -216,6 +239,27 @@ function normalizeExe(value) {
 
 function normalizePattern(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeManualAppCategory(value) {
+  const category = normalizePattern(value);
+  return MANUAL_APP_CATEGORIES.has(category) ? category : "";
+}
+
+function normalizeAppClassificationOverrides(value) {
+  const overrides = {};
+  if (!value || typeof value !== "object") return overrides;
+
+  for (const [rawExe, rawEntry] of Object.entries(value)) {
+    const exe = normalizeExe(rawExe);
+    const category = normalizeManualAppCategory(rawEntry?.category || rawEntry);
+    if (!exe || !category || category === "unknown") continue;
+    overrides[exe] = {
+      category,
+      updatedAt: Number(rawEntry?.updatedAt || Date.now())
+    };
+  }
+  return overrides;
 }
 
 function normalizeUrl(value) {
@@ -313,110 +357,81 @@ function nativeBrowserTrackingActive(now = Date.now()) {
     && now - lastNativeBrowserWindowSampleAt <= 5000;
 }
 
-function heuristicClassifyApp(activity) {
-  const exe = exeFromActivity(activity);
-  const text = `${exe} ${activity.processName || ""} ${activity.title || ""}`.toLowerCase();
-  const entertainmentPatterns = [
-    "taptap", "steam", "epicgames", "game", "游戏", "bilibili", "youtube",
-    "douyin", "tiktok", "netflix", "iqiyi", "youku", "twitch", "huya",
-    "douyu", "weibo", "xiaohongshu", "reddit", "instagram", "facebook",
-    "shortvideo", "直播", "短视频", "娱乐", "腾讯视频", "爱奇艺", "优酷", "b站"
-  ];
-  const socialPatterns = ["wechat", "weixin", "qq", "discord", "telegram", "social", "社交"];
-  const studyPatterns = ["calculator", "notepad", "word", "excel", "powerpnt", "code", "devenv", "idea", "notion", "学习", "课程"];
-  if (entertainmentPatterns.some((pattern) => text.includes(pattern))) {
-    return { category: "entertainment", confidence: 0.8, reason: "命中软件娱乐规则" };
-  }
-  if (socialPatterns.some((pattern) => text.includes(pattern))) {
-    return { category: "social", confidence: 0.7, reason: "命中软件社交规则" };
-  }
-  if (studyPatterns.some((pattern) => text.includes(pattern))) {
-    return { category: "study", confidence: 0.65, reason: "命中软件学习规则" };
-  }
-  return { category: "unknown", confidence: 0.4, reason: "未命中软件本地规则" };
+function manualAppClassification(exe) {
+  const entry = db.config.appClassificationOverrides?.[normalizeExe(exe)];
+  const category = normalizeManualAppCategory(entry?.category);
+  if (!category || category === "unknown") return null;
+  return {
+    category,
+    isEntertainment: isEntertainmentCategory(category),
+    confidence: 1,
+    needsResearch: false,
+    researchQuery: "",
+    reason: "管理员手动分组",
+    evidence: [],
+    manual: true
+  };
+}
+
+function appClassificationCacheValid(cached, now = Date.now()) {
+  if (!cached || cached.policyVersion !== APP_CLASSIFICATION_POLICY_VERSION) return false;
+  const ttl = cached.result?.needsResearch ? 15 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  return now - Number(cached.timestamp || 0) < ttl;
+}
+
+function saveAppClassification(exe, result, now = Date.now()) {
+  const cleanExe = normalizeExe(exe);
+  if (!cleanExe || !result) return;
+  const previous = db.appClassificationCache?.[cleanExe];
+  const next = {
+    timestamp: now,
+    policyVersion: APP_CLASSIFICATION_POLICY_VERSION,
+    result
+  };
+  if (JSON.stringify(previous) === JSON.stringify(next)) return;
+  db.appClassificationCache[cleanExe] = next;
+  saveDb();
 }
 
 function getAppClassification(activity) {
   const exe = exeFromActivity(activity);
   if (isBrowserExe(exe)) return { category: "tool", confidence: 1, reason: "浏览器由标签页分类" };
+  const manual = manualAppClassification(exe);
+  if (manual) return manual;
+  const known = classifyKnownApp(activity);
+  if (known) return known;
   const cached = db.appClassificationCache?.[exe];
-  if (cached && Date.now() - Number(cached.timestamp || 0) < 7 * 24 * 60 * 60 * 1000) {
+  if (appClassificationCacheValid(cached)) {
     return cached.result;
   }
   return heuristicClassifyApp(activity);
 }
 
 async function aiClassifyApp(activity) {
-  const fallback = heuristicClassifyApp(activity);
   const key = deepSeekApiKey();
   const model = db.config.aiClassification?.model || DEFAULT_AI_MODEL;
-  if (!key || !db.config.aiClassification?.enabled) return fallback;
-
-  const prompt = [
-    "你是 Windows 软件用途分类器。只输出严格 JSON，不要输出解释文字。",
-    "分类只能是 entertainment, work, study, shopping, social, news, tool, unknown。",
-    "游戏、视频、短视频、直播、娱乐内容和主要用于刷信息流的软件归为 entertainment。",
-    "聊天、社交动态和社区软件可归为 social；social 也计入娱乐总额度。",
-    "办公、开发、文档、课程、学习工具不要归为 entertainment。",
-    `可执行文件: ${exeFromActivity(activity)}`,
-    `进程名: ${activity.processName || ""}`,
-    `窗口标题: ${activity.title || ""}`,
-    '输出格式: {"category":"entertainment","confidence":0.0,"reason":"短原因"}'
-  ].join("\n");
-
-  let response;
-  try {
-    response = await fetch(DEEPSEEK_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: "你只输出可解析的 JSON。" },
-          { role: "user", content: prompt }
-        ],
-        stream: false,
-        temperature: 0
-      })
-    });
-  } catch {
-    return { ...fallback, reason: "AI 请求失败，已使用本地规则" };
-  }
-
-  if (!response.ok) return { ...fallback, reason: `AI 请求失败，已使用本地规则：HTTP ${response.status}` };
-
-  try {
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "";
-    const parsed = JSON.parse(content.replace(/^```json\s*/i, "").replace(/```$/i, "").trim());
-    const category = normalizePattern(parsed.category);
-    const allowed = new Set(["entertainment", "work", "study", "shopping", "social", "news", "tool", "unknown"]);
-    return {
-      category: allowed.has(category) ? category : "unknown",
-      confidence: Number(parsed.confidence || 0),
-      reason: String(parsed.reason || "AI 软件分类")
-    };
-  } catch {
-    return { ...fallback, reason: "AI 输出无法解析，已使用本地规则" };
-  }
+  if (!key || !db.config.aiClassification?.enabled) return heuristicClassifyApp(activity);
+  return classifyAppWithAI(activity, { apiKey: key, model });
 }
 
 function ensureAppClassification(activity) {
   const exe = exeFromActivity(activity);
   if (isBrowserExe(exe) || isAppWhitelisted(exe)) return;
+  if (manualAppClassification(exe)) return;
+  const known = classifyKnownApp(activity);
+  if (known) {
+    saveAppClassification(exe, known);
+    return;
+  }
   if (!deepSeekApiKey() || !db.config.aiClassification?.enabled) return;
   const cached = db.appClassificationCache?.[exe];
-  if (cached && Date.now() - Number(cached.timestamp || 0) < 7 * 24 * 60 * 60 * 1000) return;
+  if (appClassificationCacheValid(cached)) return;
   if (appClassifyInFlight.has(exe)) return;
 
   appClassifyInFlight.add(exe);
   aiClassifyApp(activity)
     .then((result) => {
-      db.appClassificationCache[exe] = { timestamp: Date.now(), result };
-      saveDb();
+      saveAppClassification(exe, result);
     })
     .catch(() => {})
     .finally(() => appClassifyInFlight.delete(exe));
@@ -736,6 +751,7 @@ function ingestVisibleBrowserWindows(rawWindows, now = Date.now()) {
   }
 
   for (const [key, session] of next) visibleBrowserSessions.set(key, session);
+  enforceNativeBrowserEntertainmentLimit(now);
   saveDb();
 }
 
@@ -1222,11 +1238,11 @@ function getBrowserEntertainmentMs(day = todayKey(), now = Date.now()) {
 function getAppEntertainmentMs(day = todayKey(), now = Date.now()) {
   let total = Object.entries(db.totals[day] || {})
     .filter(([exe]) => !isBrowserExe(exe) && !isAppWhitelisted(exe))
-    .filter(([exe, value]) => isEntertainmentCategory(getAppClassification({
+    .filter(([exe, value]) => isEntertainmentClassification(getAppClassification({
       exe,
       processName: exe.replace(/\.exe$/i, ""),
       title: Object.keys(value.titles || {}).pop() || ""
-    }).category))
+    })))
     .reduce((sum, [, value]) => sum + Number(value.ms || 0), 0);
 
   const currentIsNativeWindow = Boolean(current
@@ -1234,7 +1250,7 @@ function getAppEntertainmentMs(day = todayKey(), now = Date.now()) {
   if (current && !currentIsNativeWindow && day === todayKey(now)) {
     const exe = exeFromActivity(current.activity);
     const classification = getAppClassification(current.activity);
-    if (!isBrowserExe(exe) && !isActiveWhitelisted(current.activity) && isEntertainmentCategory(classification.category)) {
+    if (!isBrowserExe(exe) && !isActiveWhitelisted(current.activity) && isEntertainmentClassification(classification)) {
       const dayStart = new Date(`${day}T00:00:00`).getTime();
       total += Math.max(0, now - Math.max(current.startedAt, dayStart));
     }
@@ -1248,7 +1264,7 @@ function getAppEntertainmentMs(day = todayKey(), now = Date.now()) {
       if (durationMs <= 0
         || isBrowserExe(exe)
         || isActiveWhitelisted(session.activity)
-        || !isEntertainmentCategory(classification.category)) continue;
+        || !isEntertainmentClassification(classification)) continue;
       total += durationMs;
     }
   }
@@ -1272,7 +1288,7 @@ function appEntertainmentRows(day = todayKey(), now = Date.now()) {
         ms: Math.round(value.ms || 0),
         include: !isBrowserExe(exe)
           && !isAppWhitelisted(exe)
-          && isEntertainmentCategory(classification.category)
+          && isEntertainmentClassification(classification)
       };
     })
     .filter((row) => row.include)
@@ -1283,7 +1299,7 @@ function appEntertainmentRows(day = todayKey(), now = Date.now()) {
   if (current && !currentIsNativeWindow && day === todayKey(now)) {
     const exe = exeFromActivity(current.activity);
     const classification = getAppClassification(current.activity);
-    if (!isBrowserExe(exe) && !isActiveWhitelisted(current.activity) && isEntertainmentCategory(classification.category)) {
+    if (!isBrowserExe(exe) && !isActiveWhitelisted(current.activity) && isEntertainmentClassification(classification)) {
       const dayStart = new Date(`${day}T00:00:00`).getTime();
       const durationMs = Math.max(0, now - Math.max(current.startedAt, dayStart));
       const row = rows.find((item) => item.name === exe);
@@ -1300,7 +1316,7 @@ function appEntertainmentRows(day = todayKey(), now = Date.now()) {
       if (durationMs <= 0
         || isBrowserExe(exe)
         || isActiveWhitelisted(session.activity)
-        || !isEntertainmentCategory(classification.category)) continue;
+        || !isEntertainmentClassification(classification)) continue;
       const row = rows.find((item) => item.name === exe);
       if (row) {
         row.ms += Math.round(durationMs);
@@ -1391,6 +1407,64 @@ function filterAdminSummaryRows(rows) {
   return rows.filter((row) => Number(row.ms || 0) >= ADMIN_SUMMARY_MIN_MS);
 }
 
+function normalizeAppExecutable(value) {
+  const raw = String(value || "").trim().replace(/^.*[\\/]/, "");
+  const exe = normalizeExe(raw);
+  return /^[a-z0-9_. -]+\.exe$/i.test(exe) ? exe : "";
+}
+
+function unknownAppRows(day = todayKey()) {
+  const candidates = new Map();
+  const dayTotals = db.totals[day] || {};
+  const dayRunningTotals = db.runningTotals[day] || {};
+
+  function addCandidate(rawExe, title = "", activity = {}) {
+    const exe = normalizeAppExecutable(rawExe);
+    if (!exe || isBrowserExe(exe) || isRunningWhitelisted(exe) || manualAppClassification(exe)) return;
+
+    const classification = getAppClassification({
+      ...activity,
+      exe,
+      processName: activity.processName || exe.replace(/\.exe$/i, ""),
+      title: title || activity.title || ""
+    });
+    if (classification.category !== "unknown" && !classification.needsResearch) return;
+
+    const total = Number(dayTotals[exe]?.ms || 0);
+    const running = Number(dayRunningTotals[exe]?.ms || 0);
+    const previous = candidates.get(exe);
+    candidates.set(exe, {
+      exe,
+      title: title || activity.title || previous?.title || "",
+      ms: Math.round(Math.max(total, previous?.ms || 0)),
+      runningMs: Math.round(Math.max(running, previous?.runningMs || 0)),
+      confidence: Number(classification.confidence || 0),
+      reason: String(classification.reason || "AI 尚未确认软件用途"),
+      needsResearch: Boolean(classification.needsResearch)
+    });
+  }
+
+  for (const [exe, cached] of Object.entries(db.appClassificationCache || {})) {
+    if (cached?.result?.category === "unknown" || cached?.result?.needsResearch) {
+      addCandidate(exe, "", {}, cached.result);
+    }
+  }
+
+  for (const [exe, value] of Object.entries(dayTotals)) {
+    const title = Object.keys(value.titles || {}).sort((a, b) => value.titles[b] - value.titles[a])[0] || "";
+    addCandidate(exe, title);
+  }
+
+  for (const process of db.lastProcesses || []) {
+    addCandidate(process.exe || `${process.processName || ""}.exe`, "", process);
+  }
+
+  if (db.lastSeen) addCandidate(db.lastSeen.exe, db.lastSeen.title, db.lastSeen);
+
+  return Array.from(candidates.values())
+    .sort((a, b) => (b.ms - a.ms) || (b.runningMs - a.runningMs) || a.exe.localeCompare(b.exe));
+}
+
 function browserDisplayName(exe) {
   const names = {
     "msedge.exe": "Microsoft Edge",
@@ -1455,7 +1529,10 @@ function liveWindowSummary(now = Date.now()) {
     let whitelisted = isActiveWhitelisted(window);
     let status = "background";
     let reason = "";
-    let category = isBrowser ? "unknown" : getAppClassification(window).category;
+    let classification = isBrowser
+      ? { category: "unknown", isEntertainment: false }
+      : getAppClassification(window);
+    let category = classification.category;
     let url = "";
     let displayName = window.processName || exe;
 
@@ -1464,7 +1541,8 @@ function liveWindowSummary(now = Date.now()) {
       if (session) {
         activity = session.activity;
         visiblePercent = Math.round(Math.min(1, Math.max(0, Number(session.visibleRatio || 0))) * 100);
-        category = activity.browserClassification?.category || "unknown";
+        classification = activity.browserClassification || { category: "unknown", isEntertainment: false };
+        category = classification.category;
         url = activity.browserUrl || activity.browserClassification?.url || "";
         displayName = browserDisplayName(exe);
         whitelisted = isActiveWhitelisted(activity);
@@ -1476,7 +1554,7 @@ function liveWindowSummary(now = Date.now()) {
       else if (!nativeBrowserTrackingActive(now)) status = "unavailable";
       else if (visiblePercent <= 0) status = "covered";
       else if (whitelisted) status = "active_excluded";
-      else status = isEntertainmentCategory(category) ? "active_counted" : "active_excluded";
+      else status = isEntertainmentClassification(classification) ? "active_counted" : "active_excluded";
 
       if (status === "minimized") reason = "窗口已最小化";
       else if (status === "unavailable") reason = "窗口采样暂时不可用";
@@ -1490,7 +1568,8 @@ function liveWindowSummary(now = Date.now()) {
       if (session) {
         activity = session.activity;
         visiblePercent = Math.round(Math.min(1, Math.max(0, Number(session.visibleRatio || 0))) * 100);
-        category = getAppClassification(activity).category;
+        classification = getAppClassification(activity);
+        category = classification.category;
         whitelisted = isActiveWhitelisted(activity);
         displayName = activity.processName || activity.exe || displayName;
       } else if (!minimized) {
@@ -1501,7 +1580,7 @@ function liveWindowSummary(now = Date.now()) {
       else if (!nativeWindowTrackingActive(now)) status = "unavailable";
       else if (visiblePercent <= 0) status = "covered";
       else if (whitelisted) status = "active_excluded";
-      else status = isEntertainmentCategory(category) ? "active_counted" : "active_excluded";
+      else status = isEntertainmentClassification(classification) ? "active_counted" : "active_excluded";
 
       if (status === "minimized") reason = "窗口已最小化";
       else if (status === "unavailable") reason = "窗口采样暂时不可用";
@@ -1752,6 +1831,79 @@ function closeApp(exe, onResult) {
   });
 }
 
+function closeBrowserTabNative(hwnd, onResult = () => {}) {
+  const script = path.join(__dirname, "close-browser-tab.ps1");
+  const targetHwnd = Number(hwnd);
+  if (!Number.isFinite(targetHwnd) || targetHwnd <= 0) {
+    onResult({ ok: false, message: "浏览器窗口句柄无效" });
+    return;
+  }
+
+  const child = spawn("powershell.exe", [
+    "-NoProfile",
+    "-WindowStyle",
+    "Hidden",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    script,
+    "-Hwnd",
+    String(Math.trunc(targetHwnd))
+  ], { windowsHide: true });
+  let output = "";
+  child.stdout.on("data", (chunk) => {
+    output += chunk.toString("utf8");
+  });
+  child.stderr.on("data", (chunk) => {
+    output += chunk.toString("utf8");
+  });
+  child.on("error", (error) => onResult({ ok: false, message: error.message }));
+  child.on("exit", (code) => onResult({
+    ok: code === 0,
+    message: code === 0 ? output.trim() : "原生浏览器标签关闭失败"
+  }));
+}
+
+function enforceNativeBrowserEntertainmentLimit(now = Date.now()) {
+  const limitMinutes = entertainmentLimitMinutes(now);
+  if (limitMinutes <= 0) return;
+
+  const usageMs = getUnifiedEntertainmentMs(todayKey(now), now);
+  if (usageMs < limitMinutes * 60 * 1000) {
+    nativeBrowserLimitFirstSeen.clear();
+    return;
+  }
+
+  const candidates = new Set();
+  for (const session of visibleBrowserSessions.values()) {
+    const hwnd = Number(session.activity?.hwnd || 0);
+    const classification = session.activity?.browserClassification
+      || getBrowserFallbackClassification(session.activity || {});
+    const visibleRatio = Number(session.visibleRatio || 0);
+    if (!hwnd || visibleRatio <= 0 || !isEntertainmentClassification(classification)) continue;
+
+    const key = String(hwnd);
+    candidates.add(key);
+    const firstSeen = nativeBrowserLimitFirstSeen.get(key) || now;
+    nativeBrowserLimitFirstSeen.set(key, firstSeen);
+
+    const extensionSeenAt = Number(session.activity?.browserExtensionReportedAt || 0);
+    const extensionFresh = extensionSeenAt > 0 && now - extensionSeenAt <= 60 * 1000;
+    const extensionGraceActive = extensionFresh && now - firstSeen < 5 * 1000;
+    if (extensionGraceActive) continue;
+
+    const lastAction = lastNativeBrowserCloseActions.get(key) || 0;
+    if (now - lastAction < 15 * 1000) continue;
+    lastNativeBrowserCloseActions.set(key, now);
+
+    closeBrowserTabNative(hwnd, () => {});
+  }
+
+  for (const key of nativeBrowserLimitFirstSeen.keys()) {
+    if (!candidates.has(key)) nativeBrowserLimitFirstSeen.delete(key);
+  }
+}
+
 function enforceBlockedBrowserProcesses(processes, now = Date.now()) {
   const blocked = new Set((db.config.blockedBrowserExes || []).map(normalizeExe));
   const executables = new Set(processes
@@ -1773,7 +1925,7 @@ function entertainmentProcessExes(processes) {
       processName: item.processName || ""
     }))
     .filter((item) => item.exe && !isBrowserExe(item.exe) && !isAppWhitelisted(item.exe))
-    .filter((item) => isEntertainmentCategory(getAppClassification(item).category))
+    .filter((item) => isEntertainmentClassification(getAppClassification(item)))
     .map((item) => item.exe)));
 }
 
@@ -1851,6 +2003,9 @@ async function route(req, res) {
       visibleBrowserWindowCount: visibleBrowserWindowCount(),
       processMonitoring: Boolean(processMonitor),
       browserDownloadGuardMonitoring: Boolean(browserDownloadGuard),
+      browserExtensionLastSeenAt: lastBrowserExtensionSeenAt,
+      browserExtensionOnline: lastBrowserExtensionSeenAt > 0
+        && Date.now() - lastBrowserExtensionSeenAt <= 60 * 1000,
       lastSeen: db.lastSeen,
       runningCount: lastProcessSample ? lastProcessSample.running.size : 0,
       lastLimitError: db.lastLimitError,
@@ -1930,6 +2085,7 @@ async function route(req, res) {
         .sort((a, b) => b.ms - a.ms),
       appEntertainmentRows: filterAdminSummaryRows(appEntertainmentRows(day)),
       entertainmentRows: filterAdminSummaryRows(entertainmentRows(day)),
+      unknownApps: unknownAppRows(day),
       browserEntertainmentMs: Math.round(getBrowserEntertainmentMs(day)),
       browserEntertainmentLimitMinutes: entertainmentLimitMinutes(),
       entertainmentTotalMs: Math.round(getUnifiedEntertainmentMs(day)),
@@ -1937,6 +2093,39 @@ async function route(req, res) {
       minimumDisplayMinutes: ADMIN_SUMMARY_MINUTES,
       entertainmentLimitMs: entertainmentLimitMinutes() * 60 * 1000
     });
+  }
+
+  if (url.pathname === "/api/app-classifications") {
+    if (!isAuthed(req)) return sendJson(res, 401, { error: "未授权" });
+    if (req.method === "GET") {
+      return sendJson(res, 200, {
+        unknownApps: unknownAppRows(),
+        categories: Array.from(MANUAL_APP_CATEGORIES)
+      });
+    }
+    if (req.method === "POST") {
+      const body = await readBody(req);
+      const exe = normalizeAppExecutable(body.exe);
+      const category = normalizeManualAppCategory(body.category);
+      if (!exe) return sendJson(res, 400, { error: "软件名称无效" });
+      if (!category) return sendJson(res, 400, { error: "软件分组无效" });
+
+      if (category === "unknown") {
+        delete db.config.appClassificationOverrides[exe];
+      } else {
+        db.config.appClassificationOverrides[exe] = {
+          category,
+          updatedAt: Date.now()
+        };
+      }
+      saveDb();
+      return sendJson(res, 200, {
+        ok: true,
+        exe,
+        category,
+        unknownApps: unknownAppRows()
+      });
+    }
   }
 
   if (url.pathname === "/api/browser/visit" && req.method === "POST") {
@@ -1968,7 +2157,7 @@ async function route(req, res) {
     const limitMinutes = entertainmentLimitMinutes(now);
     const browserEntertainmentMs = getBrowserEntertainmentMs(todayKey(now), now);
     const entertainmentTotalMs = getUnifiedEntertainmentMs(todayKey(now), now);
-    const shouldClose = isEntertainmentCategory(classification.category)
+    const shouldClose = isEntertainmentClassification(classification)
       && limitMinutes > 0
       && entertainmentTotalMs >= limitMinutes * 60 * 1000;
     return sendJson(res, 200, {

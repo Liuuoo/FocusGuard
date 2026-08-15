@@ -13,7 +13,6 @@ if ($deepseekKey) {
 }
 $existing = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
 if ($existing) {
-    "FocusGuard already running at $(Get-Date -Format o)" | Out-File -FilePath $stdoutLog -Append -Encoding UTF8
     exit 0
 }
 Set-Location $root

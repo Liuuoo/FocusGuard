@@ -254,7 +254,9 @@ FocusGuard 默认每秒采样一次 Windows 顶层窗口：
 
     .\install-startup-admin.ps1
 
-它会创建名为 FocusGuard 的隐藏计划任务，在用户登录后启动本地服务，不创建托盘图标。启动脚本通过自身位置定位项目，不依赖当前电脑的用户名或固定盘符。
+它会创建名为 FocusGuard 的隐藏计划任务，在用户登录后通过 wscript.exe 和独立的 Node 进程启动本地服务，不创建托盘图标。启动过程中不会显示 PowerShell 或终端窗口；即使启动脚本很快退出，Node 服务也不会依赖那个窗口继续运行。启动脚本通过自身位置定位项目，不依赖当前电脑的用户名或固定盘符。
+
+如果之前已经安装过旧版开机任务，更新脚本后需要重新执行一次 install-startup-admin.ps1，让任务改用静默启动器。
 
 查看任务：
 
@@ -395,6 +397,7 @@ FocusGuard 默认每秒采样一次 Windows 顶层窗口：
     public/index.html                儿童端页面
     public/admin.html                管理端页面
     install-startup-admin.ps1        管理员安装开机任务
+    start-focusguard-silent.vbs      无窗口触发开机启动
     install-browser-force.ps1        管理员安装浏览器强制策略
     docs/demo/screenshots/           真实使用截图
     docs/demo/media/limit-demo.gif   原始限制演示 GIF

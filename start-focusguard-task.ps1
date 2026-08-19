@@ -16,4 +16,15 @@ if ($existing) {
     exit 0
 }
 Set-Location $root
-& $node $server >> $stdoutLog 2>> $stderrLog
+$process = Start-Process `
+    -FilePath $node `
+    -ArgumentList @("`"$server`"") `
+    -WorkingDirectory $root `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $stdoutLog `
+    -RedirectStandardError $stderrLog `
+    -PassThru
+
+if (-not $process) {
+    throw "FocusGuard Node process could not be started."
+}
